@@ -4,7 +4,7 @@
 // ---------------------------------------------------------------- version (shown in the profile sheet and on sign-in)
 // One number for the whole phone app. sw.js uses "appshare-" + this; tests/test_live.py fails if they ever differ.
 // Bump it whenever anything in frontend/ changes, so phones pick the change up and people can see they have it.
-const APP_VERSION = "v21";
+const APP_VERSION = "v22";
 const APP_UPDATED = "26 Nov 2026";
 /** The first time a phone opens a new version, say so — then it's obvious an update really arrived. */
 window.addEventListener("load", () => {
@@ -53,6 +53,10 @@ const ICONS = {
   building: '<path d="M4 20V6l8-3 8 3v14"/><path d="M9 20v-4h6v4M8 9h.01M12 9h.01M16 9h.01M8 13h.01M12 13h.01M16 13h.01"/>',
   ticket: '<path d="M4 7h16v3a2 2 0 0 0 0 4v3H4v-3a2 2 0 0 0 0-4z"/><path d="M14 7v10"/>',
   calendar: '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M8 3v4M16 3v4"/>',
+  info: '<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.5M12 7.6h.01"/>',
+  mail: '<rect x="3.5" y="5.5" width="17" height="13" rx="2"/><path d="M4 7l8 6 8-6"/>',
+  arrow: '<path d="M5 12h14M13 6l6 6-6 6"/>',
+  shield: '<path d="M12 3.5l7 3v5.2c0 4.3-3 7.8-7 8.8-4-1-7-4.5-7-8.8V6.5z"/><path d="M9 12l2.2 2.2L15.5 10"/>',
   spark: '<path d="M12 3v5M12 16v5M3 12h5M16 12h5"/>',
   wrench: '<path d="M15 4a5 5 0 0 0-4.6 6.9L4 17.3V20h2.7l6.4-6.4A5 5 0 0 0 20 9l-3 1-2-2 1-3z"/>',
   dots: '<circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/>',
@@ -249,10 +253,13 @@ async function renderTopbar({ back = null, title = null } = {}) {
     ${back ? `<button class="back" id="tbBack">${ic("back")}${esc(back.label || "Back")}</button><span class="grow"></span>`
       : `<span class="mark">${MARK}</span><div class="ws"><b>${esc(title || me.org)}</b></div>`}
     ${back ? `<a class="icon-btn" href="/?tab=inbox" aria-label="Inbox">${ic("bell")}<span class="dot-n hidden" id="tbBellN"></span></a>` : ""}
+    ${me.agents && typeof Assistant !== "undefined" ? `<button class="tb-asst" id="tbAsk" aria-label="Ask the Assistant" title="Assistant">${orb(30)}</button>` : ""}
     <button class="avatar" id="tbMe" aria-label="Your profile">${esc(initials(me.name))}</button></div>`;
   document.body.prepend(bar);
   if (back) bar.querySelector("#tbBack").onclick = () => (history.length > 1 && document.referrer.startsWith(location.origin) ? history.back() : location.href = back.href || "/");
   bar.querySelector("#tbMe").onclick = profileSheet;
+  bar.querySelector("#tbAsk")?.addEventListener("click", () => Assistant.open());
+  if (location.hash === "#assistant" && typeof Assistant !== "undefined" && me.agents) setTimeout(() => Assistant.open(), 50);
   window.addEventListener("scroll", () => bar.classList.toggle("scrolled", scrollY > 4), { passive: true });
   Live.now();
   window.addEventListener("appshare:reconnected", () => Live.now());

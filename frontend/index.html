@@ -19,6 +19,7 @@
     <section id="tab-create" class="hidden"></section>
     <section id="tab-inbox" class="hidden"></section>
   </main>
+  <button class="ask-dock hidden" id="askDock" aria-label="Ask the Assistant"><span class="ad-orb"></span><span class="ad-t">Ask AppShare…</span><span class="ad-k"></span></button>
   <nav class="tabbar" aria-label="Sections"><div class="tabs">
     <button data-tab="home"></button>
     <button data-tab="create" class="create-tab"></button>
@@ -26,6 +27,7 @@
   </div></nav>
 
   <script src="/static/common.js"></script>
+  <script src="/static/assistant.js"></script>
   <script src="/agents/characters.js"></script>
   <script>
     document.querySelector('[data-tab=home]').innerHTML = ic("home") + "<span>Home</span>";
@@ -36,7 +38,7 @@
     const $ = id => document.getElementById(id);
     const due = s => {
       const d = deadline(s);
-      const t = d.text.replace(/^Closes /, "").replace(new RegExp(` ${new Date().getFullYear()}$`), "");
+      const t = d.text.replace(/^Closes /, "").replace(new RegExp(`,? ${new Date().getFullYear()}$`), "");
       const text = t[0].toUpperCase() + t.slice(1);
       return { text, soon: d.soon, closed: d.closed, mid: /^(In|Today|Tomorrow)/.test(text) ? text[0].toLowerCase() + text.slice(1) : text };
     };
@@ -47,6 +49,8 @@
       if (push) history.replaceState(null, "", t === "home" ? "/" : "/?tab=" + t);
       scrollTo(0, 0);
       if (t === "home") loadHome();
+      $("askDock").classList.toggle("hidden", t !== "home" || !me?.agents);
+      document.body.classList.toggle("has-dock", t === "home" && !!me?.agents);
       if (t === "inbox") loadInbox();
       if (t === "create") drawCreate();
     }
@@ -70,9 +74,8 @@
                 : { n: d.mine.length || d.shared.length, label: d.mine.length ? "apps you made" : "shared with you", go: d.mine.length ? "secMine" : "secShared" },
       ];
 
-      const P = [`<div class="page-head"><div class="over">${esc(todayLine())}</div><h1>${greeting()}, ${esc(first)}</h1></div>
-        <div class="card glance">${glance.map(g => `<button data-go="${g.go}" class="${g.hot ? "hot" : ""} ${g.n ? "" : "zero"}"><b>${g.n}</b><span>${esc(g.label)}</span></button>`).join("")}</div>
-        ${me.agents ? `<button class="ask-asst" id="askAsst"><span class="as-ic">${ic("sparkle")}</span><span class="grow"><b>Ask the Assistant</b><span>“What do I need to do?” · “RSVP to the workshop for me”</span></span>${ic("chev")}</button>` : ""}`];
+      const P = [me.agents ? briefing(d, first) : `<div class="page-head"><div class="over">${esc(todayLine())}</div><h1>${greeting()}, ${esc(first)}</h1></div>`,
+        `<div class="card glance">${glance.map(g => `<button data-go="${g.go}" class="${g.hot ? "hot" : ""} ${g.n ? "" : "zero"}"><b>${g.n}</b><span>${esc(g.label)}</span></button>`).join("")}</div>`];
 
       if (d.todo.length) P.push(`<div class="sec" id="secTodo"><div class="sec-t"><h2>To do</h2><span class="n">${d.todo.length}</span></div>
         <div class="card list">${d.todo.map(a => { const w = due(a.closes_at); return `
@@ -107,83 +110,34 @@
 
       $("tab-home").innerHTML = P.join("");
       $("newBtn").onclick = () => setTab("create");
-      if ($("askAsst")) $("askAsst").onclick = () => openAssistant();
+      document.querySelectorAll("[data-ask]").forEach(b => b.onclick = () => Assistant.open({ ask: b.dataset.ask }));
+      document.querySelectorAll("[data-fill]").forEach(b => b.onclick = () => Assistant.open({ fill: b.dataset.fill }));
       document.querySelectorAll("[data-go]").forEach(b => b.onclick = () => $(b.dataset.go)?.scrollIntoView({ behavior: "smooth", block: "start" }));
     }
 
-    // ============================================================ ASSISTANT
-    // Your own agent across AppShare. It looks things up and PREPARES; anything that sends or changes something comes
-    // back as a card, and only your Confirm runs it (the server checks everything again at that moment).
-    let asstSession = null;
-    const ASK_IDEAS = ["What do I need to do?", "How are my apps doing?", "Any updates on my requests?", "Remind people who haven't answered my form"];
-
-    /** Your automations: always visible, switched on or off by you — no AI needed to stop one. */
-    async function automationsSheet() {
-      const sh = sheet(`<div class="as-head"><span class="as-ic">${ic("clock")}</span><div><h2>Automations</h2>
-          <p class="muted small">Set up by asking the Assistant. They run without AI, stop when the app closes, and you can switch them off here.</p></div>
-          <button class="icon-btn" data-close aria-label="Close">${ic("x")}</button></div><div id="auList" class="as-convo"><p class="muted">Loading…</p></div>`);
-      const box = sh.el.querySelector("#auList");
-      async function draw() {
-        const { automations: L } = await api("/api/automations");
-        box.innerHTML = L.length ? L.map(x => `<div class="au-row ${x.enabled ? "" : "off"}"><div class="grow"><b>${esc(x.what)}</b>
-            <span class="muted small">${x.runs} run${x.runs === 1 ? "" : "s"}${x.last_run ? ` · last ${esc(timeAgo(x.last_run))}` : ""}${x.last_result ? ` · ${esc(x.last_result)}` : ""}</span></div>
-            <label class="switch" title="On / off"><input type="checkbox" data-au="${x.id}" ${x.enabled ? "checked" : ""}><i></i></label>
-            <button class="icon-btn" data-del="${x.id}" aria-label="Delete">${ic("trash")}</button></div>`).join("")
-          : `<p class="muted">No automations yet. Try: “Every Monday at 9, remind people who haven't answered my feedback form.”</p>`;
-        box.querySelectorAll("[data-au]").forEach(i => i.onchange = async () => { await api(`/api/automations/${i.dataset.au}`, { json: { enabled: i.checked } }); draw(); });
-        box.querySelectorAll("[data-del]").forEach(b => b.onclick = async () => { await api(`/api/automations/${b.dataset.del}`, { method: "DELETE" }); draw(); });
-      }
-      draw();
-    }
-    function openAssistant(first) {
-      const sh = sheet(`<div class="as-head"><span class="as-ic">${ic("sparkle")}</span><div><h2>Assistant</h2>
-          <p class="muted small">It looks things up and gets things ready. Nothing is sent until you press Confirm.</p></div>          <button class="icon-btn" id="asAuto" title="Your automations" aria-label="Your automations">${ic("clock")}</button>
-          <button class="icon-btn" data-close aria-label="Close">${ic("x")}</button></div>
-        <div class="as-convo" id="asConvo">${asstSession ? "" : `<div class="as-ideas">${ASK_IDEAS.map(q => `<button class="chip" data-q="${esc(q)}">${esc(q)}</button>`).join("")}</div>`}</div>
-        <form class="as-ask" id="asForm"><textarea id="asIn" rows="1" placeholder="Ask, or say what to do — e.g. “RSVP yes to the workshop, morning session”"></textarea>
-          <button class="btn primary" id="asGo" aria-label="Send">${ic("send")}</button></form>`);
-      const convo = sh.el.querySelector("#asConvo"), input = sh.el.querySelector("#asIn");
-      const add = html => { convo.insertAdjacentHTML("beforeend", html); convo.scrollTop = convo.scrollHeight; return convo.lastElementChild; };
-      async function ask(text) {
-        if (!text.trim()) return;
-        convo.querySelector(".as-ideas")?.remove();
-        add(`<div class="bubble me">${esc(text)}</div>`);
-        const wait = add(`<div class="bubble agent as-wait"><span class="conn-spin"></span> Looking…</div>`);
-        input.value = ""; input.disabled = true;
-        try {
-          const r = await api("/api/agent/assistant", { json: { message: text, session_id: asstSession } });
-          asstSession = r.session_id;
-          wait.remove();
-          add(r.error ? `<div class="bubble err">${esc(r.error)}</div>` : `<div class="bubble agent">${esc(r.reply || "")}</div>`);
-          (r.cards || []).forEach(card);
-        } catch (e) { wait.remove(); add(`<div class="bubble err">${esc(e.message)}</div>`); }
-        input.disabled = false; input.focus();
-      }
-      function card(c) {
-        const el = add(`<div class="as-card"><div class="as-ct">${ic(c.kind === "automation" || c.kind === "automation_off" ? "clock" : c.kind === "remind" ? "bell" : c.kind === "submit" ? "send" : "pencil")}<b>${esc(c.title)}</b></div>
-            <dl>${c.rows.map(x => `<div><dt>${esc(x.label)}</dt><dd>${esc(x.value)}${x.tag ? ` <span class="muted tiny">${esc(x.tag)}</span>` : ""}</dd></div>`).join("")}</dl>
-            ${c.note ? `<p class="muted small">${esc(c.note)}</p>` : ""}${c.cost ? `<p class="muted tiny">Uses the AI once more: ${esc(c.cost)}.</p>` : ""}
-            ${c.reason ? `<details class="as-why"><summary class="muted small">Why</summary><p class="small">${esc(c.reason)}</p></details>` : ""}
-            <div class="as-acts"><button class="btn" data-no>Cancel</button><button class="btn primary" data-yes>${ic("check")}${esc(c.confirm_label || "Confirm")}</button></div></div>`);
-        const done = html => { el.querySelector(".as-acts").outerHTML = `<div class="as-done">${html}</div>`; };
-        el.querySelector("[data-yes]").onclick = async e => {
-          const b = e.currentTarget; b.disabled = true; b.innerHTML = `<span class="conn-spin"></span> Working…`;
-          try {
-            const r = await api("/api/assistant/confirm", { json: { id: c.id, accept: true } });
-            done(`${ic("check")}<span>${esc(r.done || "Done.")}</span>${c.slug ? `<a class="btn sm" href="/a/${esc(c.slug)}">Open</a>` : ""}`);
-            el.classList.add("ok");
-          } catch (err) { b.disabled = false; b.innerHTML = `${ic("check")}${esc(c.confirm_label || "Confirm")}`; done(`${ic("x")}<span>${esc(err.message)}</span>`); el.classList.add("bad"); }
-        };
-        el.querySelector("[data-no]").onclick = async () => {
-          try { await api("/api/assistant/confirm", { json: { id: c.id, accept: false } }); } catch { /* already gone */ }
-          done(`<span class="muted">Cancelled — nothing happened.</span>`);
-        };
-      }
-      sh.el.querySelector("#asAuto").onclick = automationsSheet;
-      sh.el.querySelectorAll("[data-q]").forEach(b => b.onclick = () => ask(b.dataset.q));
-      sh.el.querySelector("#asForm").onsubmit = e => { e.preventDefault(); ask(input.value); };
-      input.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); ask(input.value); } });
-      if (first) ask(first); else setTimeout(() => input.focus(), 150);
+    // ============================================================ THE ASSISTANT'S BRIEFING
+    // The Assistant speaks first: a short briefing written from Home's own data (instant, no AI call), with the
+    // two or three things it could do next. Tapping one opens the Assistant with that request.
+    function briefing(d, first) {
+      const soonest = d.todo[0], mineOpen = d.mine.filter(a => a.status === "published" && a.window === "open");
+      const behind = mineOpen.filter(a => a.audience && a.responses < a.audience).sort((x, y) => (y.audience - y.responses) - (x.audience - x.responses))[0];
+      const waiting = d.mine.reduce((n, a) => n + (a.waiting || 0), 0);
+      const lines = [];
+      const closes = c => { const w = due(c), t = w.mid.replace(/,\s*$/, ""); return /^(in |today|tomorrow)/i.test(t) ? `closes ${t.toLowerCase()}` : `closes ${t}`; };
+      if (d.todo.length) lines.push(`You have <b>${d.todo.length} ${d.todo.length === 1 ? "app" : "apps"} to answer</b>${soonest?.closes_at ? ` — “${esc(soonest.title)}” ${esc(closes(soonest.closes_at))}` : ""}.`);
+      if (waiting) lines.push(`<b>${waiting} ${waiting === 1 ? "request is" : "requests are"} waiting</b> for your decision.`);
+      if (behind) lines.push(`“${esc(behind.title)}” has <b>${behind.responses} of ${behind.audience}</b> responses.`);
+      if (!lines.length) lines.push(d.mine.length ? "You're all caught up. Your apps are running smoothly." : "You're all caught up. Ask me anything, or let me help you make your first app.");
+      const acts = [];
+      if (soonest) acts.push({ ask: `Help me answer “${soonest.title}”`, label: `Answer “${soonest.title}”`, icon: "send" });
+      if (waiting) acts.push({ ask: "Which requests are waiting for my decision?", label: "Review waiting requests", icon: "check" });
+      if (behind) acts.push({ ask: `Remind the people who haven't answered “${behind.title}”`, label: `Remind people about “${behind.title}”`, icon: "bell" });
+      if (acts.length < 3) acts.push({ ask: "What do I need to do this week?", label: "What's due this week?", icon: "calendar" });
+      return `<section class="brief">
+          <div class="brief-h">${orb(40, true)}<div><div class="over">${esc(todayLine())}</div><h1>${greeting()}, ${esc(first)}</h1></div></div>
+          <p class="brief-t">${lines.slice(0, 2).join(" ")}</p>
+          <div class="brief-acts">${acts.slice(0, 3).map(a => `<button data-ask="${esc(a.ask)}">${ic(a.icon)}<span>${esc(a.label)}</span></button>`).join("")}</div>
+        </section>`;
     }
 
     // ============================================================ CREATE
@@ -285,6 +239,10 @@
 
     (async () => {
       me = await renderTopbar();
+      $("askDock").querySelector(".ad-orb").outerHTML = orb(28);
+      $("askDock").querySelector(".ad-k").innerHTML = ic("arrow");
+      $("askDock").onclick = () => Assistant.open();
+      window.addEventListener("appshare:changed", () => { if (document.querySelector(".tabbar .on")?.dataset.tab === "home") loadHome(); });
       const t = new URLSearchParams(location.search).get("tab");
       setTab(["create", "inbox"].includes(t) ? t : "home", false);
       window.addEventListener("appshare:reconnected", () => { const on = document.querySelector(".tabbar .on")?.dataset.tab; if (on === "home") loadHome(); });
