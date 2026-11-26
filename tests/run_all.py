@@ -19,6 +19,7 @@ SUITES = [
     ("test_responsible", "Anonymity end to end, human decision on AI flags"),
     ("test_minimisation", "No emails or anonymous file names sent to the AI; respondents told about AI review"),
     ("test_providers", "AI provider switch: Claude / Groq / mixed; translation, errors, a full build on simulated Groq"),
+    ("test_creator", "The account answers 'your name / email' for signed-in people; creator recognised"),
     ("test_limits", "Cost budget, rate limits, alerts"),
     ("test_ui_smoke", "Phone app and Control Center pages load without script errors"),
     ("test_live", "Open screens update by themselves within 2 s; files compressed and cached"),
