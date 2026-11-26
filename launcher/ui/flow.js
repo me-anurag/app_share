@@ -14,7 +14,7 @@ const Flow = (() => {
   const tok = (i, o) => `${CC.num(i)} in · ${CC.num(o)} out`;
   const json = v => `<pre class="fl-json">${E(JSON.stringify(v, null, 2))}</pre>`;
   const AGENT = { builder: "Builder", data: "Data agent", design: "Design agent", access: "Access agent",
-                  review: "Review agent", reminder: "Reminder agent", insights: "Insights agent" };
+                  review: "Review agent", reminder: "Reminder agent", insights: "Insights agent", site: "Site agent" };
 
   // -------------------------------------------------------------- skeleton
   function skeleton() {
@@ -480,10 +480,107 @@ const Flow = (() => {
         + (rej.length ? sec("Refused (and why)", rej.map(e => `<div class="fl-step bad"><div class="fl-sl"><b>${E(e.detail.by || "Someone")}</b> <span class="cell-sub">${CC.clock(e.ts)}</span></div><ul class="fl-ul">${(e.detail.reasons || []).map(r => `<li>${E(r)}</li>`).join("")}</ul></div>`).join("")) : "")
         + (subs.length ? sec("Arrivals", `<ol class="fl-ol">${subs.slice(-30).reverse().map(e => `<li>${E(e.detail.by || "Someone")} · ${CC.clock(e.ts)}${e.detail.updated ? " · edited" : ""}${e.detail.files ? ` · ${e.detail.files} file` : ""}</li>`).join("")}</ol>`) : "");
     }
+    // Redraw only when something changed, and keep what the person opened: expanded sections, open instructions, scroll.
+    const box = $("flDBody"), sameNode = box.dataset.node === node;
+    if (sameNode && box.dataset.sig === body) return;
+    const open = sameNode ? new Set([...box.querySelectorAll("details[open][data-k]")].map(x => x.dataset.k)) : new Set();
+    const prompts = sameNode ? new Set([...box.querySelectorAll("[data-prompt]")].filter(b => b.nextElementSibling?.innerHTML).map(b => b.dataset.prompt)) : new Set();
+    const scroll = sameNode ? box.scrollTop : 0;
     $("flDTitle").innerHTML = `<div class="label">Step</div><h2>${E(title)}</h2>`;
-    $("flDBody").innerHTML = body;
-    $("flDBody").querySelectorAll("[data-prompt]").forEach(b => b.onclick = () => showPrompt(b));
+    box.innerHTML = body;
+    box.dataset.sig = body; box.dataset.node = node;
+    box.querySelectorAll("details[data-k]").forEach(x => { if (open.has(x.dataset.k)) x.open = true; });
+    box.querySelectorAll("[data-prompt]").forEach(b => { b.onclick = () => showPrompt(b); if (prompts.has(b.dataset.prompt)) showPrompt(b); });
+    box.querySelectorAll("[data-go]").forEach(b => b.onclick = () => openNode(b.dataset.go));
     CC.hydrateIcons(d);
+    box.scrollTop = scroll;
+  }
+
+  // -------------------------------------------------------------- the handover: from whom, what in, what it did, what out, to whom
+  const SPEC_AGENT = { ask_data_agent: "data", ask_design_agent: "design", ask_access_agent: "access", ask_site_agent: "site" };
+  const FINAL = { data: "submit_fields", design: "submit_design", access: "submit_access", site: "submit_site", review: "submit_review",
+                  reminder: "send_reminders" };
+  const chip = (id, label) => ["builder", "data", "design", "access", "review", "reminder", "insights", "validator", "app", "request", "responses", "shared"].includes(id)
+    ? `<button class="fl-go" data-go="${id}">${E(label)}</button>` : `<b>${E(label)}</b>`;
+  const clip = (v, n = 160) => { const t = typeof v === "string" ? v : JSON.stringify(v); return t && t.length > n ? t.slice(0, n - 1) + "…" : (t || ""); };
+  const names = list => (list || []).map(x => x && (x.name || x.label || x.title || x.type) || x).filter(Boolean);
+
+  /** One tool call in plain words: what the agent did, and what came back. */
+  function action(s) {
+    const a = (s.detail || {}).args || {}, r = (s.detail || {}).result, err = r && typeof r === "object" && r.error;
+    const res = err ? `error: ${clip(r.error, 140)}${r.problems ? ` (${r.problems.length} problems)` : ""}` : "";
+    const A = AGENT[SPEC_AGENT[s.name]] || "";
+    switch (s.name) {
+      case "ask_data_agent": case "ask_design_agent": case "ask_access_agent": case "ask_site_agent":
+        return [`Gave the ${A} a brief`, `“${clip(a.brief, 400)}”`,
+          res || (r && (r.fields ? `got back ${r.fields.length} fields${r.closes_at ? ", deadline " + r.closes_at : ""}` : r.title ? `got back “${r.title}” in ${r.theme_color || "a colour"}`
+            : r.share_suggestions ? `got back: ${names(r.share_suggestions).join(", ") || "no audience"}` : r.site ? `got back a ${r.site.theme} site` : "got its answer")), SPEC_AGENT[s.name]];
+      case "check_fields": return [`Checked ${(a.fields || []).length} fields with the Validator`, names(a.fields).join(", "), res || (r?.ok ? "all valid" : `${(r?.problems || []).length} problems: ${clip((r?.problems || []).join("; "), 200)}`)];
+      case "submit_fields": return [`Handed over ${(a.fields || []).length} fields${a.closes_at ? ", deadline " + a.closes_at : ""}`, names(a.fields).join(", "), res || "accepted"];
+      case "get_fields": return ["Read the Data agent's fields", "", res || `${(r?.fields || []).length} fields`];
+      case "check_color": return [`Checked that white text is readable on ${a.hex}`, "", r?.contrast ? `contrast ${r.contrast}:1 — ${r.readable ? "readable" : "too light"}` : res];
+      case "submit_design": return [`Handed over the design: “${a.title}”`, `${a.theme_color || ""} · ${a.style || ""} ${a.pattern || ""}`.trim(), res || "accepted"];
+      case "list_groups": return ["Read the list of groups", "", res || `${(r?.groups || []).length} groups`];
+      case "search_people": return [`Searched the directory for “${a.query}”`, "", res || `${(r?.people || []).length} found: ${names(r?.people).slice(0, 5).join(", ")}`];
+      case "submit_access": return ["Handed over who should get the app", (a.share_suggestions || []).map(x => `${x.name || x.type} (${x.role})`).join(", "), res || "accepted"];
+      case "check_site": return ["Checked the site layout", "", res || (r?.ok ? `valid: ${(r.blocks || []).join(", ")}` : `${(r?.problems || []).length} problems`)];
+      case "submit_site": return [`Handed over a ${a.site?.theme || ""} site`, `${(a.site?.pages || []).length} page(s)`, res || "accepted"];
+      case "get_current_app": return ["Opened the current app", "", res || (r?.spec ? `“${r.spec.title}”` : "no app yet")];
+      case "save_app": return [a.use_team_draft ? "Saved the team's draft" + (a.spec && Object.keys(a.spec).length ? " with changes" : "") : "Saved the app it wrote itself",
+        a.spec && Object.keys(a.spec).length ? clip(a.spec, 300) : "", res || (r?.link ? `Validator: valid · saved as ${r.link}` : "")];
+      case "get_overview": return ["Read the app's overview", "", res || `${r?.responses ?? "?"} responses of ${r?.expected_audience ?? "?"}`];
+      case "list_responses": return ["Read the responses", "", res || `${(r?.responses || []).length} read`];
+      case "list_missing": return ["Found who hasn't responded", "", res || `${(r?.missing || r?.people || []).length} people`];
+      case "get_assignment": return ["Read what the assignment asks", "", res || "ok"];
+      case "read_submission": return ["Read the submission (files fenced as data)", "", res || (r?.guard ? `scanner: ${clip(r.guard, 100)}` : "ok")];
+      case "compare_with_others": return ["Compared it with the other submissions", "", res || clip(r, 160)];
+      case "submit_review": return [`Gave its verdict: ${a.verdict}`, a.summary || "", res || "recorded as a suggestion"];
+      case "send_reminders": return [`Sent ${(a.people || a.emails || []).length} reminders`, `“${a.title || ""}” — ${clip(a.message, 200)}`, res || "sent"];
+      case "submit_block": return [`Wrote one ${a.block?.type || ""} block`, "", res || "added"];
+    }
+    return [s.name, clip(a, 200), res || clip(r, 160)];
+  }
+
+  function handover(r) {
+    const parent = r.parent_id ? (J.runs || []).find(x => x.id === r.parent_id) : null;
+    const steps = r.steps || [];
+    const tools = steps.filter(s => s.kind === "tool");
+    const fin = FINAL[r.agent] ? [...tools].reverse().find(s => s.name === FINAL[r.agent] && s.ok) : null;
+    const saved = r.agent === "builder" ? [...tools].reverse().find(s => s.name === "save_app" && s.ok) : null;
+    let from, to;
+    if (parent) from = chip(parent.agent, `${AGENT[parent.agent] || parent.agent}`) + ` <span class="cell-sub">asked it to do this part</span>`;
+    else if (r.agent === "builder") from = chip("request", J.owner ? `${J.owner} (the request)` : "the person's request");
+    else if (r.agent === "review") from = chip("responses", "a new submission") + ` <span class="cell-sub">started automatically</span>`;
+    else if (r.agent === "reminder") from = `<b>${r.trigger === "schedule" ? "the reminder schedule" : "the owner"}</b>`;
+    else from = `<b>the owner</b> <span class="cell-sub">asked a question</span>`;
+    if (parent) to = chip(parent.agent, AGENT[parent.agent]) + ` <span class="cell-sub">as the answer to its brief</span>`;
+    else if (r.agent === "builder") to = chip("validator", "Validator") + " → " + chip("app", "the saved app") + ` <span class="cell-sub">and the reply</span> → ` + chip("request", J.owner || "the person");
+    else if (r.agent === "review") to = chip("responses", "the owner's Responses tab") + ` <span class="cell-sub">as a suggestion — a person decides</span>`;
+    else if (r.agent === "reminder") to = `<b>${(fin?.detail?.args?.people || fin?.detail?.args?.emails || []).length || "the"} people who hadn't responded</b> <span class="cell-sub">as notifications</span>`;
+    else to = `<b>the owner</b> <span class="cell-sub">as the chat reply</span>`;
+    const did = tools.map((s, i) => {
+      const [what, detail, result, go] = action(s);
+      return `<li class="${s.ok ? "" : "bad"}"><span class="fl-hn">${i + 1}</span><div><b>${E(what)}</b>${go ? " " + chip(go, "open") : ""}
+        ${detail ? `<div class="fl-hd">${E(detail)}</div>` : ""}${result ? `<div class="fl-hr">→ ${E(result)}</div>` : ""}</div></li>`;
+    }).join("");
+    const outObj = fin?.detail?.args;
+    let output = "";
+    if (r.agent === "builder") {
+      output = (saved ? `<div class="fl-p">Saved the app — ${E(action(saved)[2])}</div>` : "") + `<blockquote class="fl-quote">${E(r.output || (r.status === "running" ? "…still working" : "—"))}</blockquote>`;
+    } else if (outObj) {
+      const { reason, ...rest } = outObj;
+      output = `<div class="fl-p">${E(action(fin)[0])}</div><details class="fl-step" data-k="${E(r.id)}:out"><summary><b>The exact output it handed over</b> <span class="cell-sub">${Object.keys(rest).length} parts</span></summary><div class="fl-si">${json(rest)}</div></details>`
+        + (reason ? `<div class="label">Why (its own words)</div><blockquote class="fl-quote fl-why">${E(reason)}</blockquote>` : "");
+    } else {
+      output = `<blockquote class="fl-quote">${E(r.output || (r.status === "running" ? "…still working" : "—"))}</blockquote>`;
+    }
+    return `<div class="fl-hand">
+      <div class="fl-hrow"><div class="label">From</div><div>${from}</div></div>
+      <div class="fl-hrow"><div class="label">Input</div><div><blockquote class="fl-quote">${E(r.input || "—")}</blockquote></div></div>
+      <div class="fl-hrow"><div class="label">What it did</div><div>${did ? `<ol class="fl-did">${did}</ol>` : `<span class="cell-sub">${r.status === "running" ? "working…" : "answered directly, no tools"}</span>`}</div></div>
+      <div class="fl-hrow"><div class="label">Output</div><div>${output}</div></div>
+      <div class="fl-hrow"><div class="label">Passed to</div><div>${to}</div></div>
+    </div>`;
   }
 
   function kvTotals(s, n, kv) {
@@ -494,20 +591,20 @@ const Flow = (() => {
     const t = r.totals;
     const st = r.status === "ok" ? `<span class="tag good">done</span>` : r.status === "running" ? `<span class="tag accent">working</span>` : `<span class="tag bad">${E(r.status)}</span>`;
     return `<div class="fl-run-card">
-      <div class="fl-sl">${st} <span class="cell-sub">${new Date(r.started_at).toLocaleString([], { dateStyle: "short", timeStyle: "medium" })} · trigger ${E(r.trigger)}</span></div>
+      <div class="fl-sl">${st} <span class="cell-sub">${new Date(r.started_at).toLocaleString([], { dateStyle: "short", timeStyle: "medium" })} · ${ms(r.ms)} · ${usd(t.cost)}</span></div>
+      ${handover(r)}
+      <details class="fl-step" data-k="${E(r.id)}:numbers"><summary><b>Numbers</b> <span class="cell-sub">time, model, calls, tokens, cost</span></summary><div class="fl-si">
       ${kv([["Time", ms(r.ms)], ["Model", `<span class="mono">${E(r.model || "—")}</span>`], ["Model calls", t.llm_calls], ["Tool calls", `${t.tool_calls}${t.tool_errors ? ` (${t.tool_errors} returned an error)` : ""}`],
         ["Tokens", `${CC.num(t.tokens_in)} in · ${CC.num(t.cache_read)} cached · ${CC.num(t.cache_write)} cache write · ${CC.num(t.tokens_out)} out`], ["Cost", `${usd(t.cost)} <span class="cell-sub">calculated</span>`],
-        t.retries ? ["Retries", t.retries] : null, (t.valid + t.rejected) ? ["Validator", `${t.valid} valid · ${t.rejected} rejected`] : null])}
-      ${(() => { const why = r.steps.filter(s => s.detail && s.detail.reason); return why.length ? sec("Stated reason (the agent's own words)", why.map(s => `<blockquote class="fl-quote fl-why"><span class="mono">${E(s.name)}</span>${E(s.detail.reason)}</blockquote>`).join("")) : ""; })()}
-      ${sec("Received", `<blockquote class="fl-quote">${E(r.input || "—")}</blockquote>`)}
-      ${r.prompt_sha ? `<button class="btn sm" data-prompt="${E(r.prompt_sha)}">Show its instructions</button><div class="fl-prompt"></div>` : ""}
-      ${sec(`Steps (${r.steps.length})`, r.steps.map(stepHtml).join("") || `<div class="empty-note">No steps.</div>`)}
+        t.retries ? ["Retries", t.retries] : null, (t.valid + t.rejected) ? ["Validator", `${t.valid} valid · ${t.rejected} rejected`] : null, ["Started by", E(r.trigger)]])}</div></details>
+      ${(() => { const why = r.steps.filter(s => s.detail && s.detail.reason); return why.length ? sec("Stated reasons (the agent's own words)", why.map(s => `<blockquote class="fl-quote fl-why"><span class="mono">${E(s.name)}</span>${E(s.detail.reason)}</blockquote>`).join("")) : ""; })()}
       ${r.error ? sec("Error", `<div class="note bad">${E(r.error)}</div>`) : ""}
-      ${sec("Produced", `<blockquote class="fl-quote">${E(r.output || (r.status === "running" ? "…still working" : "—"))}</blockquote>`)}
+      ${r.prompt_sha ? `<button class="btn sm" data-prompt="${E(r.prompt_sha)}">Show its instructions</button><div class="fl-prompt"></div>` : ""}
+      ${sec(`Every step, raw (${r.steps.length})`, r.steps.map(s => stepHtml(s, r.id)).join("") || `<div class="empty-note">No steps.</div>`)}
     </div>`;
   }
 
-  function stepHtml(s) {
+  function stepHtml(s, runId = "") {
     const d = s.detail || {};
     let head = "", inner = "";
     if (s.kind === "llm") {
@@ -528,7 +625,7 @@ const Flow = (() => {
       head = `<i class="fl-k-ic bad"></i><b>${E(s.name)}</b> <span class="cell-sub">waited ${ms(s.ms)}</span>`;
       inner = `<div class="note bad">${E(d.error)}</div>`;
     }
-    return `<details class="fl-step ${s.ok === 0 ? "bad" : ""}"><summary>${head}</summary><div class="fl-si">${inner}</div></details>`;
+    return `<details class="fl-step ${s.ok === 0 ? "bad" : ""}" data-k="${E(runId)}:${E(s.seq ?? s.started_at)}"><summary>${head}</summary><div class="fl-si">${inner}</div></details>`;
   }
 
   async function showPrompt(btn) {
