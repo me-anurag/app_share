@@ -239,7 +239,9 @@ def main():
     stamp = time.strftime("%Y%m%d-%H%M%S")
     run_dir = os.path.join(ROOT, "data", "evals", f"{stamp}-safety-{a.mode}")
     os.makedirs(os.path.join(run_dir, "cassettes"), exist_ok=True)
-    meta = {"mode": a.mode, "started": time.strftime("%Y-%m-%d %H:%M:%S"), "source": a.src or None}
+    from evals.proof import code_fingerprints, git_commit
+    meta = {"mode": a.mode, "started": time.strftime("%Y-%m-%d %H:%M:%S"), "source": a.src or None,
+            "code": code_fingerprints(), "git": git_commit()}
     results = []
     for g in ("off", "on"):
         print(f"\nGuardrails {g.upper()}")

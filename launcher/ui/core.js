@@ -152,14 +152,14 @@ const CC = {
     document.addEventListener("keydown", e => {
       if (e.key === "Escape") this.closeConnect();
       if (e.target.matches("input, textarea") || e.ctrlKey || e.metaKey || e.altKey) return;
-      const m = { 1: "live", 2: "monitor", 3: "agents", 4: "flow" }[e.key];
+      const m = { 1: "live", 2: "monitor", 3: "agents", 4: "flow", 5: "evaluation" }[e.key];
       if (m) this.setMode(m);
     });
 
     this.fire("init");
     this.hydrateIcons();
     const initial = (location.hash || "").replace("#", "");
-    if (["live", "monitor", "agents", "flow"].includes(initial)) this.setMode(initial);
+    if (["live", "monitor", "agents", "flow", "evaluation"].includes(initial)) this.setMode(initial);
     this.pollStatus();
     setInterval(() => this.pollStatus(), 1500);
     setInterval(() => this.tickUptime(), 1000);
@@ -169,7 +169,7 @@ const CC = {
   setMode(mode) {
     this.mode = mode;
     document.querySelectorAll(".modes button").forEach(b => { b.classList.toggle("active", b.dataset.mode === mode); b.setAttribute("aria-selected", b.dataset.mode === mode); });
-    ["live", "monitor", "agents", "flow"].forEach(m => document.getElementById("view-" + m).classList.toggle("hidden", m !== mode));
+    ["live", "monitor", "agents", "flow", "evaluation"].forEach(m => document.getElementById("view-" + m).classList.toggle("hidden", m !== mode));
     history.replaceState(null, "", "#" + mode);
     this.fire("mode", mode);
   },

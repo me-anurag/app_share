@@ -1,0 +1,261 @@
+{
+ "about": "SHA-256 fingerprints of evaluation result files. Commit this file; a later change to a sealed file shows as 'modified' in the Evaluation tab.",
+ "files": {
+  "data/evals/20261125-181836-fake/results.json": {
+   "sha256": "f861ea3c5634d89e5d9d87f758e02cf718b6e987b3ab0913df5ae9698b787a12",
+   "sealed_at": "2026-11-27 00:13:04",
+   "bytes": 115135
+  },
+  "data/evals/20261125-182325-live/results.json": {
+   "sha256": "a21fb47c7a6a6b97732ad35b17845abc334e5db6cf533d4f1613e6567f791323",
+   "sealed_at": "2026-11-27 00:13:04",
+   "bytes": 135343
+  },
+  "data/evals/20261125-182325-live/cassettes/G1-rsvp__original0.json": {
+   "sha256": "c5b2da24d67ea27ee1f7f6115c4f66b438f6f2a7a25cc4ff0b2d59a56ab1826d",
+   "sealed_at": "2026-11-27 00:13:04",
+   "bytes": 12847
+  },
+  "data/evals/20261125-182325-live/cassettes/G1-rsvp__original1.json": {
+   "sha256": "17a547a1cf4c52ac6629f76601eb0e95ee00e823aed9a95b0b545363fcca29eb",
+   "sealed_at": "2026-11-27 00:13:04",
+   "bytes": 11692
+  },
+  "data/evals/20261125-182325-live/cassettes/G1-rsvp__paraphrase0.json": {
+   "sha256": "33f5286b75cdf0b68c2a26899095059abefbc3131b01e84fe790f6584623c45c",
+   "sealed_at": "2026-11-27 00:13:04",
+   "bytes": 11095
+  },
+  "data/evals/20261125-182325-live/cassettes/G2-workshop__original0.json": {
+   "sha256": "1e84fcfc00bf0557f04c4160370379ac0edbbce5e0a86d4034d527ec4a369735",
+   "sealed_at": "2026-11-27 00:13:04",
+   "bytes": 13000
+  },
+  "data/evals/20261125-182325-live/cassettes/G2-workshop__original1.json": {
+   "sha256": "500a0566d5152acbf3841af2b3a395b54eb89da62fe583c9cc32336b59ba87f5",
+   "sealed_at": "2026-11-27 00:13:04",
+   "bytes": 12376
+  },
+  "data/evals/20261125-182325-live/cassettes/G2-workshop__paraphrase0.json": {
+   "sha256": "5270769b112cc28ca2e054c54203232b5f8429cb0e487e4e764c793181129ccf",
+   "sealed_at": "2026-11-27 00:13:04",
+   "bytes": 15099
+  },
+  "data/evals/20261125-182325-live/cassettes/I1-count__original0.json": {
+   "sha256": "4eb4e1480c551865bc8793aad528d5a7324a99a80998200646f8a76edca8b1b2",
+   "sealed_at": "2026-11-27 00:13:04",
+   "bytes": 2267
+  },
+  "data/evals/20261125-182325-live/cassettes/I1-count__original1.json": {
+   "sha256": "58c223e47f230f72cf65280e1932b9f10514e6853f860e7f851e03247c92efb9",
+   "sealed_at": "2026-11-27 00:13:04",
+   "bytes": 2191
+  },
+  "data/evals/20261125-182325-live/cassettes/I1-count__paraphrase0.json": {
+   "sha256": "a0b6bb26913555b534dffb81d318a1577787d4f1963700462e4a210c26106049",
+   "sealed_at": "2026-11-27 00:13:04",
+   "bytes": 2147
+  },
+  "data/evals/20261125-182325-live/cassettes/I2-missing__original0.json": {
+   "sha256": "d17c9379dc153bf394b42b9836bb5f37527f4d0974ebba67d4f2b45faf5869a4",
+   "sealed_at": "2026-11-27 00:13:05",
+   "bytes": 1476
+  },
+  "data/evals/20261125-182325-live/cassettes/I2-missing__original1.json": {
+   "sha256": "4db8153fc9d38ae03c1d77b810b037580bcaeee1fa1385b0d54e4885510522f9",
+   "sealed_at": "2026-11-27 00:13:05",
+   "bytes": 1480
+  },
+  "data/evals/20261125-182325-live/cassettes/I2-missing__paraphrase0.json": {
+   "sha256": "f3095708f2e8ef0a70f932bd3f0998b11826d63ac391c6b96b06c3266154c2cc",
+   "sealed_at": "2026-11-27 00:13:05",
+   "bytes": 1535
+  },
+  "data/evals/20261125-182325-live/cassettes/O1-leave__original0.json": {
+   "sha256": "9cb0ec652517c2071b5e4d4828d03acebbe7a5523a080da92444412f6c0cf8e4",
+   "sealed_at": "2026-11-27 00:13:05",
+   "bytes": 16771
+  },
+  "data/evals/20261125-182325-live/cassettes/O1-leave__original1.json": {
+   "sha256": "f0b19e0892faca54d74d67d021a5014a071ae11feaad2b2a2c3fccdb6342d0e9",
+   "sealed_at": "2026-11-27 00:13:05",
+   "bytes": 18224
+  },
+  "data/evals/20261125-182325-live/cassettes/O1-leave__paraphrase0.json": {
+   "sha256": "12a93c78a1df21be78943e39ad80a682054e041054c8262c42f5fef65e8cfb6f",
+   "sealed_at": "2026-11-27 00:13:05",
+   "bytes": 17154
+  },
+  "data/evals/20261125-182325-live/cassettes/O2-lunch-poll__original0.json": {
+   "sha256": "babd0d891a74dca995b608d4ad65227e48445cdf2713421b62521e4a48c6e0f7",
+   "sealed_at": "2026-11-27 00:13:05",
+   "bytes": 9960
+  },
+  "data/evals/20261125-182325-live/cassettes/O2-lunch-poll__original1.json": {
+   "sha256": "9faffba3dc8c6eb9d24058f2ccd92465ec6e800e9311a330d93c4658425266d5",
+   "sealed_at": "2026-11-27 00:13:05",
+   "bytes": 9001
+  },
+  "data/evals/20261125-182325-live/cassettes/O2-lunch-poll__paraphrase0.json": {
+   "sha256": "b84ee29fd7a98b00f2634e10d4696fb6ed1ddb277ff9c6da1c6c2c4661978016",
+   "sealed_at": "2026-11-27 00:13:05",
+   "bytes": 9174
+  },
+  "data/evals/20261125-182325-live/cassettes/O3-expenses__original0.json": {
+   "sha256": "79b5c012738607e4968a79415bef2f707e16fc53dd063065b7a856ffe14fcefa",
+   "sealed_at": "2026-11-27 00:13:05",
+   "bytes": 12165
+  },
+  "data/evals/20261125-182325-live/cassettes/O3-expenses__original1.json": {
+   "sha256": "0ec276dda953afeda801aeba619def2f6ffb1903e20775516645f8dcf5035c72",
+   "sealed_at": "2026-11-27 00:13:05",
+   "bytes": 13992
+  },
+  "data/evals/20261125-182325-live/cassettes/O3-expenses__paraphrase0.json": {
+   "sha256": "f95740ca7d215a0ba4c9bcbb3410dd5f6cb3dac62d11564aba3f70a3722750c0",
+   "sealed_at": "2026-11-27 00:13:05",
+   "bytes": 13493
+  },
+  "data/evals/20261125-182325-live/cassettes/R1-remind__original0.json": {
+   "sha256": "6e942dd97db9ea0f32843e2aaedddc9f8ce4e0bfff6b085ffc2e4b065b8356cd",
+   "sealed_at": "2026-11-27 00:13:05",
+   "bytes": 3770
+  },
+  "data/evals/20261125-182325-live/cassettes/R1-remind__original1.json": {
+   "sha256": "4622d7da423676880afafd64bda5b2e7466aac1a5b024dc2ce3ca7d380af606f",
+   "sealed_at": "2026-11-27 00:13:05",
+   "bytes": 2515
+  },
+  "data/evals/20261125-182325-live/cassettes/U1-feedback__original0.json": {
+   "sha256": "73921583463fe6856aeafc125aea0e2d39a3a69efb8b808d172193cc56c236af",
+   "sealed_at": "2026-11-27 00:13:05",
+   "bytes": 11946
+  },
+  "data/evals/20261125-182325-live/cassettes/U1-feedback__original1.json": {
+   "sha256": "005a51092da0628d1897e01d9e00fb40a3bfacc2d101777b83bc1cdcc04c5a12",
+   "sealed_at": "2026-11-27 00:13:05",
+   "bytes": 12900
+  },
+  "data/evals/20261125-182325-live/cassettes/U1-feedback__paraphrase0.json": {
+   "sha256": "8980fb3622a2b2d29dedef7723a6b2d33e163308679ea397ae5be55c9963b7f1",
+   "sealed_at": "2026-11-27 00:13:05",
+   "bytes": 10990
+  },
+  "data/evals/20261125-182325-live/cassettes/U2-assignment__original0.json": {
+   "sha256": "e9b49d6c06205272c8cf089ff7585defd8dacf458d45764ccc4f0a7e048adb75",
+   "sealed_at": "2026-11-27 00:13:05",
+   "bytes": 15135
+  },
+  "data/evals/20261125-182325-live/cassettes/U2-assignment__original1.json": {
+   "sha256": "03ea7836a2a4a3e4e82625b6a17f846fd64066faf1b87d4bbfbdd0d89e34f3de",
+   "sealed_at": "2026-11-27 00:13:05",
+   "bytes": 13501
+  },
+  "data/evals/20261125-182325-live/cassettes/U2-assignment__paraphrase0.json": {
+   "sha256": "c0e3c2dadf830f497c209fa19038716561af9681898082589a0ffa9b04e144a0",
+   "sealed_at": "2026-11-27 00:13:05",
+   "bytes": 11204
+  },
+  "data/evals/20261125-182325-live/cassettes/U3-lab-slots__original0.json": {
+   "sha256": "c6c9e59bc7b30a5593846311287c4f80a52b3f1155eafb498ec17ea18c7dc439",
+   "sealed_at": "2026-11-27 00:13:05",
+   "bytes": 14861
+  },
+  "data/evals/20261125-182325-live/cassettes/U3-lab-slots__original1.json": {
+   "sha256": "6eda5ff84ea09235c7a0266064103009aab63b67c9e956014273c5d55bcd8eeb",
+   "sealed_at": "2026-11-27 00:13:05",
+   "bytes": 13903
+  },
+  "data/evals/20261125-182325-live/cassettes/U3-lab-slots__paraphrase0.json": {
+   "sha256": "d20b13a23fd486a2d6f82dea8fb608201a57bc73ea7f028416eb420323ed6d57",
+   "sealed_at": "2026-11-27 00:13:05",
+   "bytes": 13263
+  },
+  "data/evals/20261125-182325-live/cassettes/U4-techfest__original0.json": {
+   "sha256": "0375a828ef2f3bd6bbe2f04ddbc7c73d4b042447b895c703aa33a3a2b1f4909a",
+   "sealed_at": "2026-11-27 00:13:05",
+   "bytes": 13549
+  },
+  "data/evals/20261125-182325-live/cassettes/U4-techfest__original1.json": {
+   "sha256": "f41d8d1985486100b91aae1b9b02ae4e0b7b2871386d48744d0d3c682b0c05f3",
+   "sealed_at": "2026-11-27 00:13:05",
+   "bytes": 14676
+  },
+  "data/evals/20261125-182325-live/cassettes/U4-techfest__paraphrase0.json": {
+   "sha256": "c39b31fe80aed4a63326412069b4c3d25d53e8b412296766d073a3ead425aa39",
+   "sealed_at": "2026-11-27 00:13:05",
+   "bytes": 14756
+  },
+  "data/evals/20261125-183442-replay/results.json": {
+   "sha256": "b46019f3e7040259466de554e9be328dcc2b6f50054489ac776db9c9b654a12e",
+   "sealed_at": "2026-11-27 00:13:05",
+   "bytes": 136802
+  },
+  "data/evals/20261125-185503-safety-fake/results.json": {
+   "sha256": "53de2f6c69895b7a7f96347544a9b87daf4dd03293f913d0a542f61016f707dd",
+   "sealed_at": "2026-11-27 00:13:05",
+   "bytes": 19262
+  },
+  "data/evals/20261125-185550-safety-fake/results.json": {
+   "sha256": "3253178fb0206fbe46d4c474f37a59eb15ac392eedbe615f111b7abb493f1b3c",
+   "sealed_at": "2026-11-27 00:13:05",
+   "bytes": 19632
+  },
+  "data/evals/20261125-185603-safety-fake/results.json": {
+   "sha256": "9a1a7fb30c70822de4b24f8afc95a9008ebe42caccfe778c31bf851a662f2aaa",
+   "sealed_at": "2026-11-27 00:13:05",
+   "bytes": 19854
+  },
+  "data/evals/20261125-185823-fake/results.json": {
+   "sha256": "6520176a4215eed247323b95129195caf90995db967e1994227158bcc3e9c4d8",
+   "sealed_at": "2026-11-27 00:13:05",
+   "bytes": 115139
+  },
+  "data/evals/20261125-223133-replay/results.json": {
+   "sha256": "2fb75c9b0f08543ef5e634cde6ec89b49a5cac32a946a0e86e82e9b2996af009",
+   "sealed_at": "2026-11-27 00:13:05",
+   "bytes": 179272
+  },
+  "data/evals/20261125-223811-load/load.json": {
+   "sha256": "aab00411562684414302807992e1a9acd87782c594b04b8a4f2a471ac78aff15",
+   "sealed_at": "2026-11-27 00:13:05",
+   "bytes": 2354
+  },
+  "data/evals/20261125-224203-load/load.json": {
+   "sha256": "d2c642a6ed8a8ddbc4d33eec448e8f11f067943bb3eb932099b2d4748a3aae78",
+   "sealed_at": "2026-11-27 00:13:05",
+   "bytes": 2338
+  },
+  "data/evals/20261125-224250-review-fake/results.json": {
+   "sha256": "3a66b27212d85a55db63a44fb24c20cadbd982b15fdfe79734444cc2756ee021",
+   "sealed_at": "2026-11-27 00:13:05",
+   "bytes": 4140
+  },
+  "data/evals/20261125-225743-replay/results.json": {
+   "sha256": "58f4f964fb0280610bab9d7c402d2dea7237095220ff8e3effda71b328a1ae6d",
+   "sealed_at": "2026-11-27 00:13:05",
+   "bytes": 179297
+  },
+  "data/evals/20261126-001228-fake-groq/results.json": {
+   "sha256": "7ab9648e30590bc7726fb2b05e5cf515d32f7d5cc98357a6de12902eefcd807a",
+   "sealed_at": "2026-11-27 00:13:05",
+   "bytes": 128737
+  },
+  "data/evals/20261126-113540-site-live/results.json": {
+   "sha256": "6307f4daa3eff5f22d2824ab67a03cabbcf02bf7d4d38ae0e4d600d550d6d3e7",
+   "sealed_at": "2026-11-27 00:13:05",
+   "bytes": 1607
+  },
+  "data/evals/heldout.json": {
+   "sha256": "2dbd5e6acaf8e12a58ce4de6f3edc283a698a3202d7b928a0bdc9f9585b1fff2",
+   "sealed_at": "2026-11-27 00:13:05",
+   "bytes": 383
+  },
+  "data/evals/20261127-001329-replay/results.json": {
+   "sha256": "ab9b5837cf3589b221acae6d9a628f9685a9736be8a2b36533208617344209a8",
+   "sealed_at": "2026-11-27 00:16:27",
+   "bytes": 179574
+  }
+ },
+ "git_at_last_seal": "f196b11"
+}

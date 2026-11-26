@@ -713,6 +713,191 @@ def qr(data: str, dark: str = "#0b1120", light: str = "#ffffff"):
     return Response(buf.getvalue(), media_type="image/svg+xml", headers={"Cache-Control": "no-store"})
 
 
+# --------------------------------------------------------------------------- evaluation: the numbers and the proof behind them
+# Read-only views of data/evals/ plus four jobs that re-check the numbers in front of anyone watching:
+#   reproduce  re-score the recorded live run (free)   selftest  the harness must catch a broken run (free)
+#   tests      the offline regression gate (free)      examiner  the real agents build an examiner's request (≈ $0.05)
+# One job at a time; its output streams into the Evaluation tab.
+
+class _EvalJob:
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.kind = None
+        self.proc = None
+        self.lines = []
+        self.done = True
+        self.ok = None
+        self.result = None
+        self.started = None
+
+    def view(self):
+        return {"kind": self.kind, "running": not self.done, "ok": self.ok, "log": self.lines[-60:], "result": self.result,
+                "started": self.started}
+
+
+EVAL_JOB = _EvalJob()
+EVAL_COMMANDS = {
+    "reproduce": None,                                        # built at start: needs the live run folder
+    "selftest": [sys.executable, "-m", "evals.run", "--mode", "fake"],
+    "tests": [sys.executable, "-m", "tests.run_all"],
+}
+
+
+def _eval_runs():
+    d = os.path.join(ROOT, "data", "evals")
+    return set(os.listdir(d)) if os.path.isdir(d) else set()
+
+
+def _eval_thread(kind, cmd, after):
+    before = _eval_runs()
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUNBUFFERED": "1"}
+    try:
+        EVAL_JOB.proc = subprocess.Popen(cmd, cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                                         encoding="utf-8", errors="replace", creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        for line in EVAL_JOB.proc.stdout:
+            line = line.rstrip()
+            if line:
+                EVAL_JOB.lines.append(line[:300])
+                del EVAL_JOB.lines[:-400]
+        code = EVAL_JOB.proc.wait()
+        new = sorted(_eval_runs() - before)
+        EVAL_JOB.result = after(code, new) if after else None
+        EVAL_JOB.ok = code == 0
+    except Exception as e:  # noqa: BLE001
+        EVAL_JOB.lines.append(f"error: {e}")
+        EVAL_JOB.ok = False
+    finally:
+        EVAL_JOB.done = True
+        EVAL_JOB.proc = None
+
+
+def _start_eval(kind, cmd, after=None):
+    with EVAL_JOB.lock:
+        if not EVAL_JOB.done:
+            raise HTTPException(409, f"Another check is running ({EVAL_JOB.kind}). Wait for it to finish.")
+        EVAL_JOB.kind, EVAL_JOB.lines, EVAL_JOB.done, EVAL_JOB.ok, EVAL_JOB.result = kind, [], False, None, None
+        EVAL_JOB.started = time.strftime("%H:%M:%S")
+    threading.Thread(target=_eval_thread, args=(kind, cmd, after), daemon=True).start()
+    return EVAL_JOB.view()
+
+
+@app.get("/api/eval/summary")
+def eval_summary():
+    from evals import proof
+    S = proof.summary()
+    A = proof.audit()
+    S["audit"] = {k: A.get(k) for k in ("available", "live", "replay", "live_metrics", "replay_metrics")} | {
+        "added": len(A.get("added") or []), "removed": len(A.get("removed") or []), "flipped": len(A.get("flipped") or []),
+        "runs_changed": len(A.get("success_changed") or [])} if A.get("available") else {"available": False}
+    S["seals"] = proof.check_seals()
+    S["reproduce"] = proof._load(os.path.join(proof.EV, "reproduce.json"))
+    S["history"] = proof.history()
+    S["job"] = EVAL_JOB.view()
+    return S
+
+
+@app.get("/api/eval/evidence")
+def eval_evidence(id: str):
+    from evals import proof
+    return proof.evidence(id)
+
+
+@app.get("/api/eval/run")
+def eval_run(key: str):
+    from evals import proof
+    r = proof.run_detail(key)
+    if not r:
+        raise HTTPException(404, "No such run")
+    return r
+
+
+@app.get("/api/eval/audit")
+def eval_audit():
+    from evals import proof
+    return proof.audit()
+
+
+@app.get("/api/eval/folder")
+def eval_folder(folder: str):
+    """One examiner task (or any run folder's results), for the history list."""
+    from evals import proof
+    p = os.path.normpath(os.path.join(ROOT, folder))
+    if not p.startswith(os.path.join(ROOT, "data", "evals")):
+        raise HTTPException(400, "Not an evaluation folder")
+    R = proof._load(os.path.join(p, "results.json"))
+    if not R:
+        raise HTTPException(404, "No results in that folder")
+    return {"meta": R.get("meta"), "result": R.get("result"), "metrics": {k: R.get("metrics", {}).get(k) for k in ("success", "checks")}}
+
+
+@app.post("/api/eval/seal")
+def eval_seal():
+    from evals import proof
+    return {**proof.seal(), **proof.check_seals()}
+
+
+class EvalJobIn(BaseModel):
+    kind: str
+    job: dict | None = None
+    folder: str | None = None
+    confirm_cost: bool = False
+
+
+@app.post("/api/eval/job")
+def eval_job(body: EvalJobIn):
+    from evals import proof
+    if body.kind == "reproduce":
+        (_, R), (ld, _) = proof._quality()
+        if not ld:
+            raise HTTPException(400, "There is no recorded live run to reproduce.")
+
+        def after(code, new):
+            reps = [n for n in new if n.endswith("-replay")]
+            return proof.record_reproduce(os.path.join(proof.EV, reps[-1])) if code == 0 and reps else None
+        return _start_eval("reproduce", [sys.executable, "-m", "evals.run", "--mode", "replay", "--from", proof.rel(ld)], after)
+    if body.kind == "selftest":
+        def after(code, new):
+            d = [n for n in new if n.endswith("-fake")]
+            R = proof._load(os.path.join(proof.EV, d[-1], "results.json")) if d else None
+            if not R:
+                return None
+            bad = [f"{r['case']} {r['variant']}" for r in R["results"] if not r["success"]]
+            return {"folder": "data/evals/" + d[-1], "runs": len(R["results"]), "caught": bad}
+        return _start_eval("selftest", EVAL_COMMANDS["selftest"], after)
+    if body.kind == "tests":
+        def after(code, new):
+            T = proof._load(os.path.join(proof.EV, "tests.json"))
+            return {"checks": T["checks_passed"], "suites": len(T["suites"]), "failed": T["suites_failed"]} if T else None
+        return _start_eval("tests", EVAL_COMMANDS["tests"], after)
+    if body.kind in ("examiner", "examiner-replay"):
+        if body.kind == "examiner":
+            job = body.job or {}
+            if not str(job.get("request") or "").strip():
+                raise HTTPException(400, "Type a request first.")
+            if not body.confirm_cost:
+                raise HTTPException(400, "A live task calls the real API (about $0.05). Confirm the cost first.")
+            path = os.path.join(ROOT, "data", "evals", "examiner-job.json")
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            json.dump(job, open(path, "w", encoding="utf-8"), ensure_ascii=False)
+            cmd = [sys.executable, "-m", "evals.examiner", "--job", path, "--yes"]
+        else:
+            if not body.folder:
+                raise HTTPException(400, "Which examiner task?")
+            cmd = [sys.executable, "-m", "evals.examiner", "--replay", body.folder]
+
+        def after(code, new):
+            d = [n for n in new if "-examiner" in n]
+            R = proof._load(os.path.join(proof.EV, d[-1], "results.json")) if d else None
+            return {"folder": "data/evals/" + d[-1], **R["result"]} if R else None
+        return _start_eval(body.kind, cmd, after)
+    raise HTTPException(400, "Unknown check")
+
+
+@app.get("/api/eval/job")
+def eval_job_status():
+    return EVAL_JOB.view()
+
+
 @app.post("/api/reset-data")
 def reset_data():
     """Start the demo fresh: only while the server is off. The UI asks for confirmation first."""

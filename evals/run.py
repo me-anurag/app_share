@@ -129,6 +129,8 @@ def main():
     run_dir = os.path.join(ROOT, "data", "evals", f"{stamp}-{a.mode}" + ("" if ai_mode == "claude" else f"-{ai_mode}"))
     os.makedirs(os.path.join(run_dir, "cassettes"), exist_ok=True)
     started = time.strftime("%Y-%m-%d %H:%M:%S")
+    from evals.proof import code_fingerprints, git_commit
+    code_at_start, git_at_start = code_fingerprints(), git_commit()   # what the tasks and checks were when the run began
     results = []
     by_ws = {}
     for j in jobs:
@@ -156,7 +158,7 @@ def main():
         models = {"main": "groq:" + groq_model, "specialist": "groq:" + groq_model}
     meta = {"mode": a.mode, "started": started, "finished": time.strftime("%Y-%m-%d %H:%M:%S"), "models": models, "ai": ai_mode,
             "groq_models": json.loads(groq_models or "{}") if ai_mode != "claude" else {},
-            "source": a.src or None, "jobs": len(jobs)}
+            "source": a.src or None, "jobs": len(jobs), "code": code_at_start, "git": git_at_start}
     M = metrics.compute(results)
     report.write(run_dir, meta, M, results)
     print(f"\nTask success: {report.pct(M['success'])}")
