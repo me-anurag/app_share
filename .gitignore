@@ -1,0 +1,13 @@
+data/
+.env
+__pycache__/
+*.pyc
+
+# local runtime and editor files
+.venv/
+venv/
+*.log
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

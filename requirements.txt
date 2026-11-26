@@ -1,0 +1,6 @@
+fastapi>=0.115
+uvicorn>=0.34
+python-multipart>=0.0.20
+anthropic>=2.12
+segno>=1.6
+pypdf>=5.0
