@@ -178,6 +178,30 @@ def summary():
         s = SI["summary"]
         q.append(M("site", "Site builds with blocks nobody asked for", kind="live", source=site,
                    value=f"{s['with_unrequested_blocks']}/{s['tasks']}", note="one live build so far — a small sample"))
+    play = _newest("play-live")
+    PL = _load(os.path.join(play, "results.json")) if play else None
+    if PL:
+        RS = _load(os.path.join(play, "rescored.json"))
+        first = sum(r["success"] for r in PL["results"])
+        now = sum(r["success"] for r in RS["results"]) if RS else first
+        q.append(M("play", "Quiz and party-lights builds that passed every check", kind="live", source=play,
+                   value=f"{now}/{len(PL['results'])}" + (f" (first scored {first}/{len(PL['results'])})" if RS and now != first else ""),
+                   how="the real agents build each request; exact checks on kind, mode, questions, answers, colours, strobe",
+                   note=("re-scored after one check was corrected — see the evidence" if RS and now != first else "") + " · a small sample"))
+    asd = _newest("assistant-live")
+    AS = _load(os.path.join(asd, "results.json")) if asd else None
+    if AS:
+        sm = AS["summary"]
+        q.append(M("assistant", "Assistant: the right card, or none when it must ask or refuse", wilson(sm["passed"], sm["tasks"]), "live", asd,
+                   how="9 tasks across all four phases; exact checks on each card and on the database",
+                   note=f"{sm['checks_passed']}/{sm['checks']} checks · ${sm['cost_usd']:.4f} for all 9 · a small sample"))
+    ex = sorted(d for d in glob.glob(os.path.join(EV, "2*-examiner")))
+    if ex:
+        X = [(_load(os.path.join(d, "results.json")) or {}).get("result") for d in ex]
+        X = [x for x in X if x]
+        q.append(M("examiner", "Examiner tasks (requests set on the spot)", kind="live", source=ex[-1],
+                   value=f"{sum(x['success'] for x in X)}/{len(X)} passed · {sum(c['passed'] for x in X for c in x['checks'])}/{sum(len(x['checks']) for x in X)} checks",
+                   how="the examiner's expectations become exact checks, plus 6 automatic ones"))
     cats.append({"id": "agents", "title": "1 · Metrics for evaluating the agents", "metrics": q})
 
     ss = (S or {}).get("summary") or {}
@@ -191,6 +215,9 @@ def summary():
           os.path.join(EV, "heldout.json"), how="held-out attacks detected ÷ held-out attacks (written after tuning)"),
         M("heldout.false", "Scanner false alarms on honest text", wilson(H["false_alarms"], H["honest"]) if H else None, "measured",
           os.path.join(EV, "heldout.json"), how="honest texts flagged ÷ honest texts"),
+        *([M("assistant.unconfirmed", "Assistant actions without the person's Confirm", wilson(AS["summary"]["acted_before_confirm"], AS["summary"]["tasks"]),
+             "live", asd, how="tasks where anything in the database changed before Confirm ÷ tasks",
+             note="also enforced in code: the AI has no tool that acts")] if AS else []),
         M("safety.model", "The real model's own resistance", kind="missing" if not s_live else "live", source=s_live,
           note="python -m evals.safety --mode live --yes  (≈ $0.80)") if not s_live else
         M("safety.model", "The real model's own resistance", ss.get("off", {}).get("file_model_resisted"), "live", s_live)]})
@@ -212,9 +239,15 @@ def summary():
           value=_suite(T, "test_responsible")),
         M("tests.min", "No email addresses sent to the AI", kind="measured", source="data/evals/tests.json", value=_suite(T, "test_minimisation")),
         M("review.false", "Honest work wrongly flagged by the Review agent", rvs.get("false_flag_rate_honest"), rkind, r_live or r_fake,
-          note="" if r_live else "stand-in model only — the real model: python -m evals.review_eval --mode live --yes (≈ $0.05)"),
-        M("review.fair", "Same verdict whoever's name is on the file", kind="missing" if not r_live else "live", source=r_live,
-          value=None if not r_live else f"{rvs.get('fair_sets')}", note="needs the live review run")]})
+          how="honest submissions flagged ÷ honest submissions — the harm that matters most",
+          note="tiny sample (3 honest files); a flag is only a suggestion — a person decides" if r_live else
+          "stand-in model only — the real model: python -m evals.review_eval --mode live --yes (≈ $0.05)"),
+        *([M("review.detect", "Empty, off-topic or copied work caught", rvs.get("detection_rate"), "live", r_live,
+             how="bad submissions flagged ÷ bad submissions"),
+           M("review.precision", "Flags that were right", rvs.get("precision"), "live", r_live, how="correct flags ÷ all flags")] if r_live else []),
+        M("review.fair", "Same verdict whoever's name is on the file", rvs.get("fair_sets") if r_live else None, "live" if r_live else "missing",
+          r_live, how="files given one verdict under 4 different students' names ÷ files",
+          note="" if r_live else "needs the live review run")]})
 
     selftest_caught = None
     if F:
@@ -358,6 +391,50 @@ def evidence(mid):
         cols = ["Task", "Run", "Difference"]
         rows = [{"cells": d} for d in rep.get("differences", [])] or [{"cells": ["—", "—", "none: every run and check came out identical"]}]
         note = f"Reproduced {rep.get('when', '')} from {rep.get('source', '')}."
+    elif mid == "play":
+        d = _newest("play-live")
+        PL = _load(os.path.join(d, "results.json")) if d else {}
+        RS = _load(os.path.join(d, "rescored.json")) if d else None
+        cols = ["Task", "Check", "As first scored", "Now", "Detail"]
+        for r in (PL or {}).get("results", []):
+            now = {c["check"]: c for c in next((x["checks"] for x in (RS or {}).get("results", []) if x["id"] == r["id"]), [])}
+            for c in r["checks"]:
+                n = now.get(c["check"], c)
+                rows.append({"cells": [r["id"], c["check"], "pass" if c["passed"] else "FAIL", "pass" if n["passed"] else "FAIL", n.get("detail", "")]})
+            for qq in r.get("questions", []):
+                rows.append({"cells": [r["id"], "question (check by hand)", qq["q"], "answer: " + str(qq["answer"]), " / ".join(qq["options"])]})
+        note = ("The quiz's one failed check was the checker's fault: questions like “What is the name of the cowboy doll?” were taken "
+                "for asking the player's name. The check was corrected to look only at questions without a right answer, and the saved "
+                "run was scored again; the original scoring is kept. The questions and answers are listed so a person can judge them.") if RS else ""
+    elif mid.startswith("assistant"):
+        d = _newest("assistant-live")
+        AS = _load(os.path.join(d, "results.json")) if d else {}
+        cols = ["Task", "Phase", "Who", "Asked", "Result", "Card", "The Assistant's reply", "Failed checks"]
+        for r in (AS or {}).get("results", []):
+            card = "; ".join(f"{c['kind']}: {c['title']}" for c in r.get("cards") or []) or "none"
+            rows.append({"cells": [r["id"], r["phase"], r["who"], r["message"], "pass" if r["success"] else "FAIL", card,
+                                   (r.get("reply") or r.get("error") or "")[:400],
+                                   "; ".join(f"{c['check']} ({c['detail']})" for c in r["checks"] if not c["passed"])]})
+        note = ("Each task ran in a fresh workspace. 'Nothing changed before Confirm' compares the database before and after the turn. "
+                "An earlier run (kept in the history) scored 8/9: its one failure was the checker reading a quoted note (“Swap done.”) as a "
+                "claim; the check was corrected. That run also showed replays need fixed link codes, which the evaluation now uses.")
+    elif mid == "examiner":
+        cols = ["When", "Request", "Result", "Checks", "Cost"]
+        for d in sorted(glob.glob(os.path.join(EV, "2*-examiner")), reverse=True):
+            R = _load(os.path.join(d, "results.json")) or {}
+            x = R.get("result")
+            if x:
+                rows.append({"cells": [R["meta"]["started"], x["request"], "pass" if x["success"] else "FAIL",
+                                       f"{sum(c['passed'] for c in x['checks'])}/{len(x['checks'])}", f"${x['cost_usd']:.4f}"]})
+        note = "Every examiner task ever run (none are deleted). Open one in the history below for its checks and reply."
+    elif mid.startswith("review"):
+        d = _newest("review-live") or _newest("review-fake")
+        RV = _load(os.path.join(d, "results.json")) if d else {}
+        cols = ["File", "Kind", "Expected", "Verdict", "The reviewer's reason"]
+        for r in (RV or {}).get("results", []):
+            rows.append({"cells": [r["id"] + (f" as {r['student']}" if r.get("student") else ""), r.get("group"), r.get("expect", "same verdict for every name"),
+                                   r.get("verdict"), r.get("reason") or r.get("summary") or ""]})
+        note = "Every file the Review agent read, what a correct reviewer would do, and what it did — with its own stated reason."
     else:
         note = "No itemised evidence for this number; see its source file."
     return {"id": mid, "columns": cols, "rows": rows, "note": note, "source": rel(src)}
@@ -465,7 +542,7 @@ def record_reproduce(new_dir):
 def _sealable():
     files = []
     for d in sorted(glob.glob(os.path.join(EV, "2*"))):
-        for p in [os.path.join(d, "results.json"), os.path.join(d, "load.json")] + sorted(glob.glob(os.path.join(d, "cassettes", "*.json"))):
+        for p in [os.path.join(d, n) for n in ("results.json", "load.json", "rescored.json")] + sorted(glob.glob(os.path.join(d, "cassettes", "*.json"))):
             if os.path.exists(p):
                 files.append(p)
     hp = os.path.join(EV, "heldout.json")
@@ -533,15 +610,25 @@ def history():
             head = f"success {m['success']['k']}/{m['success']['n']} · checks {m['checks']['k']}/{m['checks']['n']}"
         elif R.get("summary", {}).get("on"):
             head = f"attacks worked: off {R['summary']['off']['all_attack_success']['k']}/{R['summary']['off']['all_attack_success']['n']} → on {R['summary']['on']['all_attack_success']['k']}/{R['summary']['on']['all_attack_success']['n']}"
-        elif kind == "examiner" and R.get("result"):
+        elif kind.startswith("examiner") and R.get("result"):
             x = R["result"]
             head = f"{'pass' if x['success'] else 'FAIL'} · {sum(c['passed'] for c in x['checks'])}/{len(x['checks'])} checks · {x['request'][:60]}"
+        elif kind.startswith("assistant") and R.get("summary"):
+            sm = R["summary"]
+            head = f"{sm['passed']}/{sm['tasks']} tasks · {sm['checks_passed']}/{sm['checks']} checks · acted before Confirm: {sm['acted_before_confirm']}"
+        elif kind.startswith("play") and R.get("summary"):
+            RS = _load(os.path.join(d, "rescored.json"))
+            head = f"{R['summary']['passed']}/{R['summary']['tasks']} passed" + (f" · re-scored {sum(x['success'] for x in RS['results'])}/{len(RS['results'])}" if RS else "")
+        elif kind.startswith("review") and R.get("summary", {}).get("false_flag_rate_honest"):
+            sm = R["summary"]
+            head = (f"honest flagged {sm['false_flag_rate_honest']['k']}/{sm['false_flag_rate_honest']['n']} · bad caught "
+                    f"{sm['detection_rate']['k']}/{sm['detection_rate']['n']} · same verdict for all names {sm['fair_sets']['k']}/{sm['fair_sets']['n']}")
         elif R.get("summary", {}).get("tasks"):
             head = f"{R['summary']['tasks']} task(s)"
         meta = R.get("meta") or {}
         out.append({"folder": rel(d), "kind": kind, "when": meta.get("started") or R.get("when") or name[:13],
                     "head": head, "cost": m.get("total_cost_usd"), "source": meta.get("source"),
-                    "label": "self-test" if "fake" in kind else "measured" if kind in ("load",) else "replayed" if kind == "replay" else "live"})
+                    "label": "self-test" if "fake" in kind else "measured" if kind in ("load",) else "replayed" if "replay" in kind else "live"})
     return out
 
 

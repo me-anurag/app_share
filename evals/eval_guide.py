@@ -39,6 +39,22 @@ def T(rows, head):
     return "\n".join(out)
 
 
+def assistant_rows():
+    """Rows for the live Assistant evaluation (data/evals/*-assistant-live), or a clear 'not measured'."""
+    import glob as _g
+    runs = sorted(_g.glob(os.path.join(EV, "2*-assistant-live")))
+    if not runs:
+        return [["Assistant tasks (all four phases)", "not yet measured (`python -m evals.assistant_eval --live --yes`)"]]
+    A = load(runs[-1])
+    s = A["summary"]
+    first = load(runs[0])["summary"] if len(runs) > 1 else None
+    return [["Assistant: the right card, or none when it must ask, refuse or lacks the rights", f"{s['passed']}/{s['tasks']} tasks · {s['checks_passed']}/{s['checks']} checks (live)"],
+            ["Assistant actions that changed anything before the person's Confirm", f"{s['acted_before_confirm']}/{s['tasks']}"],
+            ["Assistant: calculated cost of all 9 tasks", f"${s['cost_usd']:.4f}"],
+            *([["Assistant: the first live run, as scored then", f"{first['passed']}/{first['tasks']} — the one failure was the checker reading a quoted note "
+                "(“Swap done.”) as a claim; corrected. That run also showed replays need fixed link codes, now used."]] if first else [])]
+
+
 def site_rows(SI):
     """Rows for the live site-build result (data/evals/*-site-live), or a clear 'not measured'."""
     if not SI:
@@ -72,7 +88,7 @@ def rel(p):
 
 
 def build():
-    q_dir = newest("*-replay")
+    q_dir = newest("*[0-9]-replay")
     live_dir = newest("*[0-9]-live")
     Q = load(q_dir)
     M = Q["metrics"]
@@ -131,6 +147,7 @@ def build():
         ["Offline test suites (one command)", f"{len(TS['suites'])} suites · {TS['checks_passed']} checks · {'all pass' if not TS['suites_failed'] else str(TS['suites_failed']) + ' failing'}" if TS else "—"],
         ["Total calculated cost of the live quality evaluation", f"${M['total_cost_usd']:.4f}"],
         *site_rows(SI),
+        *assistant_rows(),
     ], ("Measure", "Value")))
     A("")
     A(f"Sources: quality — `{rel(q_dir)}` (replay of the live run `{rel(live_dir)}`); load — `{rel(loads[-1]) if loads else '—'}`; "
@@ -140,9 +157,10 @@ def build():
     # ------------------------------------------------------------------ 2 method
     A("## 2. How the evaluation works")
     A("")
-    A("**What is evaluated.** AppShare's eight Claude agents: the **Builder** (lead; Claude Opus) coordinates **Data**, **Design**, "
+    A("**What is evaluated.** AppShare's nine Claude agents: the **Builder** (lead; Claude Opus) coordinates **Data**, **Design**, "
       "**Access** and, for sites, **Site** (specialists; Claude Haiku) to turn a request into an app spec; **Insights** answers questions about responses; "
-      "**Review** reads each submission and flags problems; **Reminder** nudges people who haven't responded. The agents never write "
+      "**Review** reads each submission and flags problems; **Reminder** nudges people who haven't responded; the **Assistant** works "
+      "for one person across the app and only ever prepares actions that the person confirms. The agents never write "
       "code: they fill in a JSON spec, and a plain-code **Validator** checks it before it is saved.")
     A("")
     A(f"**The tasks.** {len(ALL)} realistic tasks across the three workspaces (university, office, general): {len(BUILD)} app builds at three "

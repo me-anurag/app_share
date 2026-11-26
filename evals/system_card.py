@@ -39,7 +39,7 @@ def table(rows, head=("Measure", "Result")):
 
 
 def main():
-    q_dir = newest("*-replay") or newest("*-live")
+    q_dir = newest("*[0-9]-replay") or newest("*[0-9]-live")
     Q = load(q_dir)
     live_dir = newest("*[0-9]-live")
     s_live, s_fake = newest("*-safety-live"), newest("*-safety-fake")
@@ -61,7 +61,8 @@ def main():
 
     md += ["## The system", "",
            "AppShare lets people create small apps (forms, polls, registrations, bookings, requests, submissions) by describing them.",
-           "Eight Claude agents work as a team — Builder (lead), Data, Design, Access, Site, Insights, Review, Reminder — but they never",
+           "Nine Claude agents work as a team — Builder (lead), Data, Design, Access, Site, Insights, Review, Reminder, and the person's own",
+           "Assistant (it prepares actions; only the person's Confirm runs them) — but they never",
            "write code: they fill in a JSON spec that a fixed engine runs, and a plain-code **Validator** checks every spec before",
            "it is saved. Models: " + (f"Builder/Insights `{Q['meta']['models']['main']}`, specialists `{Q['meta']['models']['specialist']}`." if Q else "see configuration."), ""]
 
@@ -147,7 +148,11 @@ def main():
     if not r_live:
         md += ["**Review accuracy and name-fairness with the real model are NOT YET MEASURED** (`python -m evals.review_eval --mode live --yes`, ≈ $0.05).", ""]
 
-    from evals.eval_guide import site_rows
+    from evals.eval_guide import assistant_rows, site_rows
+    md += ["### The Assistant (works for one person; prepares, the person confirms)", "",
+           "9 tasks across its four phases (read · answer for the person · owner actions · automations), each in a fresh workspace,",
+           "scored with exact checks on the card it returned and on the database before and after the turn.", "",
+           table(assistant_rows(), head=("Measure", "Value")), ""]
     md += ["### Sites (Site agent)", "", f"Source: `{os.path.relpath(si_dir, ROOT) if si_dir else '—'}`. "
            "Scored automatically: blocks the request gave no reason for, the form placed once, time and calculated cost.", "",
            table(site_rows(SI), head=("Measure", "Value")), ""]

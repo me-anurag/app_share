@@ -255,7 +255,237 @@
    "sha256": "ab9b5837cf3589b221acae6d9a628f9685a9736be8a2b36533208617344209a8",
    "sealed_at": "2026-11-27 00:16:27",
    "bytes": 179574
+  },
+  "data/evals/20261127-002019-review-live/results.json": {
+   "sha256": "cf3cbeccabeb4e49988ad083caea46b267299ecd582629318cd2f1c22999d875",
+   "sealed_at": "2026-11-27 00:24:57",
+   "bytes": 14021
+  },
+  "data/evals/20261127-002019-review-live/cassettes/A1-honest.json": {
+   "sha256": "974ef03f56e544862e7565b981c42c653351588174b8ed584cec7e2da33fbd60",
+   "sealed_at": "2026-11-27 00:24:57",
+   "bytes": 3705
+  },
+  "data/evals/20261127-002019-review-live/cassettes/A2-honest-heaps.json": {
+   "sha256": "7d65d10a26382cb3633b2fc5f9385ce5a1612e357a9e25ac5175fcd49af81c67",
+   "sealed_at": "2026-11-27 00:24:57",
+   "bytes": 4048
+  },
+  "data/evals/20261127-002019-review-live/cassettes/A3-honest-avl.json": {
+   "sha256": "7a5b8502ace44d952fb57ea38330f82adbf192a6fcece1dd942166af77373f85",
+   "sealed_at": "2026-11-27 00:24:57",
+   "bytes": 3274
+  },
+  "data/evals/20261127-002019-review-live/cassettes/A4-empty.json": {
+   "sha256": "8aa7af83a09ea6fc3c664444af56c4af086684452e79c904b0b374d1dc772f8f",
+   "sealed_at": "2026-11-27 00:24:57",
+   "bytes": 3761
+  },
+  "data/evals/20261127-002019-review-live/cassettes/A5-off-topic.json": {
+   "sha256": "3ba4eccc7d57f56dd863bb0cf8cebc575e675e45a4adf392edbc120674c0fc05",
+   "sealed_at": "2026-11-27 00:24:57",
+   "bytes": 3592
+  },
+  "data/evals/20261127-002019-review-live/cassettes/A6-identical.json": {
+   "sha256": "8a5b46f1d2cd7a802d0c6fb8e15e8360a7806724a07e9496d131ffd373c9562d",
+   "sealed_at": "2026-11-27 00:24:57",
+   "bytes": 3776
+  },
+  "data/evals/20261127-002019-review-live/cassettes/A7-near-copy.json": {
+   "sha256": "37fc849bf7c6226184a2b9acbf23af619b19dc2d55b2d5e6c82ad5c385f3eb43",
+   "sealed_at": "2026-11-27 00:24:57",
+   "bytes": 4684
+  },
+  "data/evals/20261127-002019-review-live/cassettes/F-solid__aarav.json": {
+   "sha256": "3b80d9b4e5837a107f160fdb9ac1864adf4306547cca7000e0ee7d2e194d83d2",
+   "sealed_at": "2026-11-27 00:24:57",
+   "bytes": 3899
+  },
+  "data/evals/20261127-002019-review-live/cassettes/F-solid__diya.json": {
+   "sha256": "7c2bb49b6429d65ddf13c69ff3a746e597317b385314d4975878ca478ca291d1",
+   "sealed_at": "2026-11-27 00:24:57",
+   "bytes": 3730
+  },
+  "data/evals/20261127-002019-review-live/cassettes/F-solid__farhan.json": {
+   "sha256": "af48ff0a84b61604babd0922b812fce99dd150fd9b04f08199177739b7a2537d",
+   "sealed_at": "2026-11-27 00:24:57",
+   "bytes": 3989
+  },
+  "data/evals/20261127-002019-review-live/cassettes/F-solid__sneha.json": {
+   "sha256": "e0aa16caf1a9b3375c49ec1c7aa9fd10a6bc8089eedcef50b42713e724f2ebc4",
+   "sealed_at": "2026-11-27 00:24:57",
+   "bytes": 3849
+  },
+  "data/evals/20261127-002019-review-live/cassettes/F-thin__aarav.json": {
+   "sha256": "fee1cf874a7b93ead9e896b60a8cd2096c982e6aa85bfd0423048b485c4db541",
+   "sealed_at": "2026-11-27 00:24:57",
+   "bytes": 3818
+  },
+  "data/evals/20261127-002019-review-live/cassettes/F-thin__diya.json": {
+   "sha256": "ec7e38e547d7f4156792f314576490d73921426d02dee7aff880d43614f0be2b",
+   "sealed_at": "2026-11-27 00:24:57",
+   "bytes": 4997
+  },
+  "data/evals/20261127-002019-review-live/cassettes/F-thin__farhan.json": {
+   "sha256": "c8b6e865a221b6da12317c85070f90f851a5f2bf99a927ad2cd2c5d69c1f7b24",
+   "sealed_at": "2026-11-27 00:24:57",
+   "bytes": 3699
+  },
+  "data/evals/20261127-002019-review-live/cassettes/F-thin__sneha.json": {
+   "sha256": "f320816f155ea5be3bcdab6e5a0c7d035f75572ef9d42bf630748163bb26045e",
+   "sealed_at": "2026-11-27 00:24:57",
+   "bytes": 3831
+  },
+  "data/evals/20261127-002201-play-live/results.json": {
+   "sha256": "4dff2a1ae22a83e0665094389f4edd706735c30b6758d6a4964c3980528591cb",
+   "sealed_at": "2026-11-27 00:24:57",
+   "bytes": 6091
+  },
+  "data/evals/20261127-002201-play-live/cassettes/party-lights.json": {
+   "sha256": "99068c18f5948cda44e72496a9159d6ea85b3c73178ec0d8ae10ecf740e9cb7f",
+   "sealed_at": "2026-11-27 00:24:57",
+   "bytes": 2751
+  },
+  "data/evals/20261127-002201-play-live/cassettes/quiz-host.json": {
+   "sha256": "8bb14ec7d5c4ad7c3d50ce769fd9393fa7a9a641082f99b6d0c675fbcba0691e",
+   "sealed_at": "2026-11-27 00:24:57",
+   "bytes": 20497
+  },
+  "data/evals/20261127-002324-examiner/results.json": {
+   "sha256": "9480825909ed5aaff3fc45e55c2156e112316f203e3bba43ef4996a0d303d3e8",
+   "sealed_at": "2026-11-27 00:24:57",
+   "bytes": 3593
+  },
+  "data/evals/20261127-002324-examiner/cassettes/examiner.json": {
+   "sha256": "450798d24e4d393a563dbb3143cc237c35c67b2cfa1ba2b2beba0a8a703877ba",
+   "sealed_at": "2026-11-27 00:24:57",
+   "bytes": 12912
+  },
+  "data/evals/20261127-002354-examiner-replay/results.json": {
+   "sha256": "6ede4a35dfb6e89c02d65779763a6ef11f08a324ed66cc057f5193548e857416",
+   "sealed_at": "2026-11-27 00:24:57",
+   "bytes": 3628
+  },
+  "data/evals/20261127-002201-play-live/rescored.json": {
+   "sha256": "155fbb2bb6f8ae072874e87ee3055180c7fa4911d80326c7a61264aef5c240c9",
+   "sealed_at": "2026-11-27 00:25:12",
+   "bytes": 2125
+  },
+  "data/evals/20261127-003324-replay/results.json": {
+   "sha256": "f1c9bb7eeda36c2fbe5fd7fcd96440fdd1d046c09880e7cc82fefb1abf3f5a4c",
+   "sealed_at": "2026-11-27 01:04:10",
+   "bytes": 179596
+  },
+  "data/evals/20261127-010318-assistant-live/results.json": {
+   "sha256": "cdddbbcc1660601d71e7261e19cad8da5544777a8e0bd70b82e93d1167fcacbf",
+   "sealed_at": "2026-11-27 01:04:10",
+   "bytes": 14733
+  },
+  "data/evals/20261127-010318-assistant-live/cassettes/A1-overview.json": {
+   "sha256": "f9004cf3932a9367135f5c0da02c0cbf996cd077304eb319eae9e885198d05f5",
+   "sealed_at": "2026-11-27 01:04:10",
+   "bytes": 3114
+  },
+  "data/evals/20261127-010318-assistant-live/cassettes/A2-rsvp.json": {
+   "sha256": "f7c766678301242a243f5870301b1d8e3794d1b113daac7b204542ae128499e4",
+   "sealed_at": "2026-11-27 01:04:10",
+   "bytes": 2906
+  },
+  "data/evals/20261127-010318-assistant-live/cassettes/A3-ask-first.json": {
+   "sha256": "25cafe92a4c2ac31c1e961074c7299686f4b106288358656ce2a34f6f9220188",
+   "sealed_at": "2026-11-27 01:04:10",
+   "bytes": 3907
+  },
+  "data/evals/20261127-010318-assistant-live/cassettes/A4-quiz.json": {
+   "sha256": "8c768bf07d7225e9dbe6a36e53ae7ed05dc56bc1b1ea20111e221f089bef7542",
+   "sealed_at": "2026-11-27 01:04:10",
+   "bytes": 2015
+  },
+  "data/evals/20261127-010318-assistant-live/cassettes/A5-approve.json": {
+   "sha256": "60930baa9bce3a20abe4fe308ac9138da85c0ac15ba59b2654f02a23c7c62ec9",
+   "sealed_at": "2026-11-27 01:04:10",
+   "bytes": 4995
+  },
+  "data/evals/20261127-010318-assistant-live/cassettes/A6-remind.json": {
+   "sha256": "a5561e8a657baede7eda90465dc5fec6f8706882303bcedfb287eece702fe6db",
+   "sealed_at": "2026-11-27 01:04:10",
+   "bytes": 2926
+  },
+  "data/evals/20261127-010318-assistant-live/cassettes/A7-deadline.json": {
+   "sha256": "da5763adffd009d342282ce2d3b854ca61c3eecbc650d2d1d246c787404b5573",
+   "sealed_at": "2026-11-27 01:04:10",
+   "bytes": 3104
+  },
+  "data/evals/20261127-010318-assistant-live/cassettes/A8-automation.json": {
+   "sha256": "3ef0e82e35f108a8efcfad33f8808a20e184bd94a8c298a58f26fd6b5fb0e062",
+   "sealed_at": "2026-11-27 01:04:10",
+   "bytes": 4646
+  },
+  "data/evals/20261127-010318-assistant-live/cassettes/A9-no-rights.json": {
+   "sha256": "40cded1c83d413278d02fc5622c859ebda2b9f9504c4f131b073d88f750dc56c",
+   "sealed_at": "2026-11-27 01:04:10",
+   "bytes": 4260
+  },
+  "data/evals/20261127-010410-assistant-replay/results.json": {
+   "sha256": "ba99bc96d6a868332a5a5343c0026fc4668057d257c831f838e85ba4628ba661",
+   "sealed_at": "2026-11-27 01:05:40",
+   "bytes": 13672
+  },
+  "data/evals/20261127-010443-assistant-live/results.json": {
+   "sha256": "e8c88affb48b910f3164d2c0be38ee333e83496a77ff7104c9938257bce026b3",
+   "sealed_at": "2026-11-27 01:05:40",
+   "bytes": 14524
+  },
+  "data/evals/20261127-010443-assistant-live/cassettes/A1-overview.json": {
+   "sha256": "f5c863a477d60ed10efaee8e0165283630b5ae88cd904e9f1c0fb81acb78584f",
+   "sealed_at": "2026-11-27 01:05:40",
+   "bytes": 2875
+  },
+  "data/evals/20261127-010443-assistant-live/cassettes/A2-rsvp.json": {
+   "sha256": "0c4810126315b41fcc25cf5665be06b0919b8d1e8cc0950e0015210707f501a5",
+   "sealed_at": "2026-11-27 01:05:40",
+   "bytes": 3171
+  },
+  "data/evals/20261127-010443-assistant-live/cassettes/A3-ask-first.json": {
+   "sha256": "a0067c1a11a0946f33e1bbc3697ed1fd6bb9b52b8fc1afe8cfea5c5d47a684d1",
+   "sealed_at": "2026-11-27 01:05:40",
+   "bytes": 3727
+  },
+  "data/evals/20261127-010443-assistant-live/cassettes/A4-quiz.json": {
+   "sha256": "e7640c8f40d22469adc52e86fbced02394506620cf2718682dbe877b1c036c99",
+   "sealed_at": "2026-11-27 01:05:40",
+   "bytes": 2089
+  },
+  "data/evals/20261127-010443-assistant-live/cassettes/A5-approve.json": {
+   "sha256": "8224199d43f72ba8ebfb7933451aeb009b9af0c8553d16bdd5bec0369a37177f",
+   "sealed_at": "2026-11-27 01:05:40",
+   "bytes": 4844
+  },
+  "data/evals/20261127-010443-assistant-live/cassettes/A6-remind.json": {
+   "sha256": "e6a453a293182a640d82cf3161c85c6207796620dc350f7a09b838ade5356aa6",
+   "sealed_at": "2026-11-27 01:05:40",
+   "bytes": 2989
+  },
+  "data/evals/20261127-010443-assistant-live/cassettes/A7-deadline.json": {
+   "sha256": "01ef058c3e182a98b7cfafc839e6c3944552b0299dd5b0c0a93c7eaaf4573762",
+   "sealed_at": "2026-11-27 01:05:40",
+   "bytes": 3196
+  },
+  "data/evals/20261127-010443-assistant-live/cassettes/A8-automation.json": {
+   "sha256": "2fffb35a468fae7354519a1c9e917ef5af81cf3d0290f86879ff695a64c407fc",
+   "sealed_at": "2026-11-27 01:05:40",
+   "bytes": 4566
+  },
+  "data/evals/20261127-010443-assistant-live/cassettes/A9-no-rights.json": {
+   "sha256": "cfe100769050c51fceeccb5f60c7ad2d362c0ae30d144547b26ab78a262174c9",
+   "sealed_at": "2026-11-27 01:05:40",
+   "bytes": 4112
+  },
+  "data/evals/20261127-010529-assistant-replay/results.json": {
+   "sha256": "0c7c28ce1f5778d8e673ea90944d02008dcc9218ef8ac64601bd96c7278127a3",
+   "sealed_at": "2026-11-27 01:05:40",
+   "bytes": 14565
   }
  },
- "git_at_last_seal": "f196b11"
+ "git_at_last_seal": "04d7857"
 }
