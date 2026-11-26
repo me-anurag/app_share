@@ -95,6 +95,18 @@
     const ID_WORDS = /\b(name|phone|mobile|whatsapp|e-?mail|roll|reg(istration)?|id|employee|student|team|company|organi[sz]ation|department|section|class|address|city)\b/i;
     const isIdentity = f => ["email", "phone", "date", "file"].includes(f.type) || (f.type === "short_text" && (ID_WORDS.test(f.label) || ID_WORDS.test(f.id.replace(/_/g, " "))));
     const blank = v => v === undefined || v === null || v === "" || (Array.isArray(v) && !v.length);
+    /** Labels are written for the person answering ("Your name", "Round 1: Your guess"); the owner reads "Name", "Round 1: guess". */
+    function ownerLabel(label) {
+      const t = String(label || "").replace(/\byour\s+/gi, "").replace(/\s+/g, " ").trim();
+      return t ? t[0].toUpperCase() + t.slice(1) : label;
+    }
+    /** A "name" answer that just repeats the person's own name (already shown at the top of their row). */
+    function repeatsName(f, v, r) {
+      if (f.type !== "short_text" || blank(v) || !r.name || !/\bname\b/i.test(`${f.label} ${f.id.replace(/_/g, " ")}`)) return false;
+      const a = String(v).trim().toLowerCase(), n = r.name.toLowerCase();
+      return n.includes(a) || a.includes(n.replace(/^(prof\.|dr\.|ms\.|mr\.|mrs\.)\s*/, "").split(" ")[0]);
+    }
+    let respView = (() => { try { return localStorage.getItem("appshare.respView") || "list"; } catch { return "list"; } })();
     const openRows = new Set();
     let search = "";
 
@@ -118,7 +130,11 @@
         .map(f => f.type === "phone" ? fmtPhone(r.data[f.id]) : f.type === "date" ? fmtDate(r.data[f.id], false) : r.data[f.id]);
       // then their main choice — "Tom · Can't make it", "Neha · Thu 11 am"
       const choice = fields.find(f => ["radio", "select"].includes(f.type) && show(r.data[f.id]));
-      return [...ids.slice(0, 2), choice ? r.data[choice.id] : null].filter(Boolean).map(x => esc(x)).join(" · ");
+      // a bare "2" means nothing: short answers get their question's name ("Team size 2")
+      const cv = choice ? String(r.data[choice.id]) : null;
+      const choiceText = cv && (cv.length <= 3 || /^\d+$/.test(cv)) ? `${ownerLabel(choice.label)} ${cv}` : cv;
+      return [...ids.slice(0, 2).filter(x => String(x).toLowerCase() !== String(r.name || "").toLowerCase()), choiceText]
+        .filter(Boolean).map(x => esc(x)).join(" · ");
     }
 
     async function summary() {
@@ -131,18 +147,18 @@
       const qHtml = questions.map(qq => {
         if (qq.type === "rating") {
           const max = Math.max(1, ...Object.values(qq.counts));
-          return `<div class="q"><span class="ql">${esc(qq.label)}</span><div class="row" style="align-items:flex-end;margin-top:8px"><span class="bigstat">${qq.average ?? "–"}</span><span class="muted small">out of 5 · ${qq.answered} ${qq.answered === 1 ? "rating" : "ratings"}</span></div>
+          return `<div class="q"><span class="ql">${esc(ownerLabel(qq.label))}</span><div class="row" style="align-items:flex-end;margin-top:8px"><span class="bigstat">${qq.average ?? "–"}</span><span class="muted small">out of 5 · ${qq.answered} ${qq.answered === 1 ? "rating" : "ratings"}</span></div>
             <div class="dist">${[1, 2, 3, 4, 5].map(n => `<div><i style="height:${(qq.counts[n] / max) * 100}%" title="${qq.counts[n]}"></i>${n}</div>`).join("")}</div></div>`;
         }
         if (qq.counts) {
           const total = Math.max(1, qq.answered);
-          return `<div class="q"><span class="ql">${esc(qq.label)}</span><div class="muted tiny">${qq.answered} answered${qq.type === "checkbox" ? " · more than one allowed" : ""}</div>
+          return `<div class="q"><span class="ql">${esc(ownerLabel(qq.label))}</span><div class="muted tiny">${qq.answered} answered${qq.type === "checkbox" ? " · more than one allowed" : ""}</div>
             <div class="bars" style="margin-top:10px">${Object.entries(qq.counts).map(([o, n]) => `<div class="bar"><div class="bl"><span>${esc(o)}</span>
               <span>${qq.limits?.[o] ? `${n} of ${qq.limits[o]} places` : `${n} · ${Math.round(n / total * 100)}%`}</span></div><div class="bt"><i style="width:${(qq.limits?.[o] ? n / qq.limits[o] : n / total) * 100}%"></i></div></div>`).join("")}</div></div>`;
         }
-        if (qq.average != null) return `<div class="q"><span class="ql">${esc(qq.label)}</span><div class="row" style="margin-top:6px;gap:22px">
+        if (qq.average != null) return `<div class="q"><span class="ql">${esc(ownerLabel(qq.label))}</span><div class="row" style="margin-top:6px;gap:22px">
           <span><span class="bigstat">${qq.average}</span><div class="muted tiny">average</div></span><span><b>${qq.min}–${qq.max}</b><div class="muted tiny">range</div></span>${qq.total != null ? `<span><b>${qq.total}</b><div class="muted tiny">total</div></span>` : ""}</div></div>`;
-        if (qq.samples) return `<div class="q"><span class="ql">${esc(qq.label)}</span><div class="muted tiny">${qq.answered} ${qq.answered === 1 ? "answer" : "answers"} · newest first</div>
+        if (qq.samples) return `<div class="q"><span class="ql">${esc(ownerLabel(qq.label))}</span><div class="muted tiny">${qq.answered} ${qq.answered === 1 ? "answer" : "answers"} · newest first</div>
           <div class="stack" style="margin-top:10px">${qq.samples.length ? qq.samples.map(t => `<div class="quote">${esc(t)}</div>`).join("") : `<div class="muted small">No answers yet.</div>`}</div></div>`;
         return "";
       }).join("");
@@ -241,6 +257,17 @@
     }
 
     // ------------------------------------------------------------ Responses: one row per person, tap for everything they sent
+    /** Responses as a spreadsheet: one row per person, one column per question; the name column stays put while you scroll. */
+    function tableHtml(R, list, fields) {
+      const cols = fields.filter(f => !list.every(r => repeatsName(f, r.data[f.id], r)));
+      return `<div class="rtable-wrap card"><table class="rtable"><thead><tr><th class="stick">${R.anonymous ? "Response" : "Person"}</th>
+          ${cols.map(f => `<th>${esc(ownerLabel(f.label))}</th>`).join("")}${R.statuses.length ? "<th>Status</th>" : ""}<th>Sent</th></tr></thead><tbody>
+        ${list.map(r => `<tr data-open-row="${r.id}"><td class="stick"><b>${esc(r.name)}</b></td>
+          ${cols.map(f => `<td>${repeatsName(f, r.data[f.id], r) ? `<span class="muted">—</span>` : value(f, r.data[f.id])}</td>`).join("")}
+          ${R.statuses.length ? `<td>${r.status ? esc(r.status) : ""}</td>` : ""}<td class="nowrap muted">${esc(timeAgo(r.created_at))}</td></tr>`).join("")}
+        </tbody></table></div><div class="muted tiny" style="margin-top:8px">Scroll sideways for more questions · tap a row for the full response.</div>`;
+    }
+
     async function responses() {
       const R = await api(`/api/apps/${appId}/responses`);
       const fields = R.fields.filter(f => f.type !== "info");
@@ -250,9 +277,10 @@
       $("pane").innerHTML = `
         <div class="sec resp-tools">
           <div class="search">${ic("search")}<input id="rq" placeholder="Search ${R.responses.length} ${R.responses.length === 1 ? "response" : "responses"}" value="${esc(search)}" autocomplete="off"></div>
+          <div class="seg-mini" role="group" aria-label="View"><button data-rv="list" class="${respView === "list" ? "on" : ""}" title="One card per person" aria-label="List view">${ic("list")}</button><button data-rv="table" class="${respView === "table" ? "on" : ""}" title="Spreadsheet: one row per person" aria-label="Table view">${ic("grid")}</button></div>
           <a class="btn" href="/api/apps/${appId}/export.csv" title="Download as a spreadsheet (CSV)" aria-label="Download CSV">${ic("download")}</a></div>
         ${R.statuses.length ? `<div class="sec chips" id="sf" style="margin-top:12px">${["all", ...R.statuses].map(s => `<button class="chip ${s === statusFilter ? "on" : ""}" data-s="${esc(s)}">${s === "all" ? "All" : esc(s)} · ${s === "all" ? R.responses.length : R.responses.filter(r => r.status === s).length}</button>`).join("")}</div>` : ""}
-        <div class="sec" style="margin-top:12px">${list.length ? `<div class="card list">${list.map(r => {
+        <div class="sec" style="margin-top:12px">${list.length && respView === "table" ? tableHtml(R, list, fields) : list.length ? `<div class="card list">${list.map(r => {
           const open = openRows.has(r.id);
           return `<div class="rrow ${open ? "open" : ""}" data-id="${r.id}">
             <button class="lrow" data-toggle>
@@ -261,7 +289,7 @@
               <span class="end">${r.status ? statusWord(r.status, R.statuses) : r.review && r.review.verdict !== "ok" ? `<span class="sw ${r.review.verdict === "check" ? "warn" : "bad"}">${r.review.verdict === "check" ? "Check" : "Problem"}</span>` : `<span style="font-weight:500">${esc(timeAgo(r.created_at))}</span>`}</span>
             </button>
             <div class="rdetail">
-              <dl class="ans-list">${fields.map(f => `<div><dt>${esc(f.label)}</dt><dd>${value(f, r.data[f.id])}</dd></div>`).join("")}
+              <dl class="ans-list">${fields.filter(f => !repeatsName(f, r.data[f.id], r)).map(f => `<div><dt>${esc(ownerLabel(f.label))}</dt><dd>${value(f, r.data[f.id])}</dd></div>`).join("")}
                 <div><dt>Sent</dt><dd>${esc(fmtDate(r.created_at))}${r.updated_at && r.updated_at !== r.created_at ? ` · changed ${esc(timeAgo(r.updated_at))}` : ""}${r.subtitle ? ` · ${esc(r.subtitle)}` : ""}</dd></div></dl>
               ${r.review ? reviewBox(r.review) : ""}
               ${r.status_note ? `<div class="quote" style="margin-top:10px">${esc(r.status_note)}</div>` : ""}
@@ -270,6 +298,14 @@
                 <div class="muted tiny">They get a notification when you save.</div></div>` : ""}
             </div></div>`; }).join("")}</div>`
           : `<div class="card empty-state"><div class="ei">${ic("inbox")}</div><b>${q ? "No matches" : statusFilter !== "all" ? "None with this status" : "No responses yet"}</b><p>${q ? "Try another name or number." : statusFilter !== "all" ? "Try another filter." : "They'll appear here, one row per person, as people answer."}</p></div>`}</div>`;
+      document.querySelectorAll("[data-rv]").forEach(b => b.onclick = () => {
+        respView = b.dataset.rv;
+        try { localStorage.setItem("appshare.respView", respView); } catch { /* ignore */ }
+        responses();
+      });
+      document.querySelectorAll("[data-open-row]").forEach(tr => tr.onclick = () => {
+        openRows.add(+tr.dataset.openRow); respView = "list"; responses();
+      });
       const rq = $("rq");
       let t;
       rq.oninput = () => { clearTimeout(t); t = setTimeout(() => { search = rq.value; responses().then(() => { const n = $("rq"); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }); }, 220); };

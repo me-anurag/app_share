@@ -136,13 +136,17 @@
     function render(flash) {
       const s = D.spec, many = D.many;
       document.title = s.title;
-      const inputs = s.fields.filter(f => f.type !== "info");
+      const AUTO = D.auto || {};                     // questions the person's account already answers (name, email)
+      const inputs = s.fields.filter(f => f.type !== "info" && !(f.id in AUTO));
+      const mine = D.role === "owner" || D.role === "editor";
       const blockedMsg = { draft: "Preview — this is a draft. Share it to start collecting responses.", closed: "This app is closed.",
         not_open: `Opens ${fmtDate(s.opens_at)}.`, full: "It's full — there are no places left.", already: "You've already responded." }[D.blocked];
       const mineSub = D.my_submission;
       root.innerHTML = `
         ${heroHtml()}
         ${flash || ""}
+        ${mine ? `<div class="creator-note">${ic("eye")}<span><b>${D.role === "owner" ? "You made this app." : "You can edit this app."}</b> This is what people see.${D.blocked === "draft" ? "" : " Anything you send here counts as a real response."}</span>
+          <a class="btn sm" href="/manage/${D.id}">${ic("grid")}Manage</a></div>` : ""}
         ${blockedMsg ? `<div class="notice ${D.blocked === "draft" ? "warn" : "bad"}" style="margin-top:12px">${ic("lock")}<span>${esc(blockedMsg)}</span></div>` : ""}
         ${(D.can_submit || D.blocked === "draft") && (D.anonymous || D.ai_review) ? `<div class="privacy-note">
           ${D.anonymous ? `<div>${ic("eyeoff")}<span><b>Anonymous.</b> ${esc(D.owner || "The owner")} sees your answers but never who sent them. Don't put your name in your answers${s.fields.some(f => f.type === "file") ? " or in the file or its name" : ""}.</span></div>` : ""}
@@ -158,7 +162,10 @@
         ${D.results ? resultsHtml(D.results, mineSub?.data) : ""}
         ${D.can_submit || D.blocked === "draft" ? `
           <div class="section"><div class="section-head"><h2>${many && D.my_submissions.length ? "New request" : mineSub ? "Your answers" : "Your answers"}</h2><span class="muted small">${inputs.filter(f => f.required).length ? "* required" : ""}</span></div>
-          <form id="form" class="card" novalidate>${s.fields.map(f => fieldHtml(f, many ? null : mineSub?.data, D.capacity)).join("")}</form></div>
+          ${Object.keys(AUTO).length ? `<div class="as-line">${ic("user")}<span>Answering as <b>${esc(Object.values(AUTO).find(v => !String(v).includes("@")) || Object.values(AUTO)[0])}</b> — from your account</span></div>` : ""}
+          <form id="form" class="card" novalidate>${s.fields.map(f => f.id in AUTO
+            ? `<input type="hidden" name="${esc(f.id)}" value="${esc(AUTO[f.id])}">`
+            : fieldHtml(f, many ? null : mineSub?.data, D.capacity)).join("")}</form></div>
           <div id="formMsg"></div>
           <div class="submit-bar"><div class="prog"><small id="progT"></small><div class="meter"><i id="progB" style="width:0"></i></div></div>
             <button class="btn primary" id="go" ${D.blocked === "draft" ? "disabled" : ""}>${mineSub && !many ? "Update" : "Submit"}</button></div>` : ""}

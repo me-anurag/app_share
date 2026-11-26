@@ -855,11 +855,33 @@ def open_app(slug: str, request: Request):
                                 "status_note": m["status_note"]} for m in mine][:20] if many else [],
             "results": summarize(spec, _all_data(conn, a["id"])) if _results_allowed(spec, role if role != "guest" else None, bool(mine)) else None,
             "org": ORG_NAME, "mode": MODE,
+            # questions their account answers (filled in and hidden on the page; filled on the server too)
+            "auto": _auto_identity(spec, dict(user) if user else None),
             # transparency for the person answering: is an AI going to read this, and is it anonymous?
             "ai_review": agents.available() and spec.get("ai_review", True) and any(f["type"] in ("file", "long_text") for f in spec["fields"]),
             "anonymous": bool(spec.get("anonymous")),
         }
         return out
+
+
+_NAME_Q = re.compile(r"\bname\b", re.I)
+_NOT_PERSON = re.compile(r"\b(team|company|club|project|group|event|organi[sz]ation|school|college|product|app|file|pet|book|"
+                        r"song|place|venue|business|brand|course|subject|topic|item|dish|game|nick ?name)\b", re.I)
+
+
+def _auto_identity(spec, user):
+    """Questions the signed-in person's account already answers: {field_id: value}. Their name for a "your name"
+    question (not "team name" etc.) and their email for an email question. Never for anonymous apps or guests."""
+    if not user or spec.get("anonymous"):
+        return {}
+    out = {}
+    for f in spec["fields"]:
+        text = f"{f.get('label', '')} {f.get('id', '').replace('_', ' ')}"
+        if f["type"] == "email" and user.get("email"):
+            out[f["id"]] = user["email"]
+        elif f["type"] == "short_text" and _NAME_Q.search(text) and not _NOT_PERSON.search(text):
+            out[f["id"]] = user["name"]
+    return out
 
 
 def _guess_identity(spec, data):
@@ -920,6 +942,7 @@ async def submit(slug: str, request: Request):
         old = json.loads(existing["data"]) if existing else {}
 
         data, errors, uploads, file_errors = {}, [], [], []
+        auto = _auto_identity(spec, dict(user) if user else None)
         for f in spec["fields"]:
             if f["type"] == "info":
                 continue
@@ -939,6 +962,8 @@ async def submit(slug: str, request: Request):
                     errors.append(f"{f['label']} is required")
                 continue
             raw = form.getlist(f["id"]) if f["type"] == "checkbox" else form.get(f["id"])
+            if f["id"] in auto and not (raw or "").strip():
+                raw = auto[f["id"]]                     # the account answers "your name" / "your email"
             value, err = check_value(f, raw)
             if err:
                 errors.append(err)

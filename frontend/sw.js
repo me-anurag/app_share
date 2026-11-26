@@ -2,7 +2,7 @@
 // Static files are cached; pages are network-first; API calls and uploads are never cached.
 // When the server (or the internet tunnel in front of it) is down, the page shows the
 // offline screen, which keeps checking and reopens the app as soon as the server is back.
-const VERSION = "appshare-v16";       // = "appshare-" + APP_VERSION in common.js
+const VERSION = "appshare-v17";       // = "appshare-" + APP_VERSION in common.js
 const SHELL = [
   "/static/style.css", "/static/looks.css", "/static/common.js", "/static/offline.html",
   "/static/icons/icon-192.png", "/static/icons/icon-512.png",

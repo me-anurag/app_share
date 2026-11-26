@@ -4,7 +4,7 @@
 // ---------------------------------------------------------------- version (shown in the profile sheet and on sign-in)
 // One number for the whole phone app. sw.js uses "appshare-" + this; tests/test_live.py fails if they ever differ.
 // Bump it whenever anything in frontend/ changes, so phones pick the change up and people can see they have it.
-const APP_VERSION = "v16";
+const APP_VERSION = "v17";
 const APP_UPDATED = "26 Nov 2026";
 /** The first time a phone opens a new version, say so — then it's obvious an update really arrived. */
 window.addEventListener("load", () => {
