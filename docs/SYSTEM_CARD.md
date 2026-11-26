@@ -1,23 +1,26 @@
 # AppShare — system card and evaluation report
 
-Generated 2026-11-25 22:58 by `python -m evals.system_card` from the result files in `data/evals/`.
+Generated 2026-11-27 00:16 by `python -m evals.system_card` from the result files in `data/evals/`.
 Every number below is read from a measured result; nothing is typed by hand. Costs are **calculated** from measured
 token counts × published per-token prices, not taken from a bill.
 
 ## The system
 
 AppShare lets people create small apps (forms, polls, registrations, bookings, requests, submissions) by describing them.
-Seven Claude agents work as a team — Builder (lead), Data, Design, Access, Insights, Review, Reminder — but they never
+Eight Claude agents work as a team — Builder (lead), Data, Design, Access, Site, Insights, Review, Reminder — but they never
 write code: they fill in a JSON spec that a fixed engine runs, and a plain-code **Validator** checks every spec before
 it is saved. Models: Builder/Insights `claude-opus-5-5`, specialists `claude-haiku-5-5`.
 
 ## 1. Metrics for evaluating the agents
 
-Source: `data\evals\20261125-225743-replay` — 12 realistic tasks across three workspaces, run live once (every reply recorded in `data\evals\20261125-182325-live`) and re-scored by replay. Checks are exact (fields, rules, dates, places, groups, roles; Insights/Reminder against the database's true answer).
+Source: `data\evals\20261127-001329-replay` — 12 realistic tasks across three workspaces, run live once (every reply recorded in `data\evals\20261125-182325-live`) and re-scored by replay. Checks are exact (fields, rules, dates, places, groups, roles; Insights/Reminder against the database's true answer).
 
 | Measure | Result |
 |---|---|
-| Task success (every check passed) | **85.7%** (30/35, 95% CI 71–94%) |
+| Task success (every check passed) — re-scored by the current checks | **85.7%** (30/35, 95% CI 71–94%) |
+| Task success as scored at the live run, before one check was corrected | **45.7%** (16/35, 95% CI 30–62%) |
+| Checks passed as scored at the live run | **91.6%** (239/261, 95% CI 88–94%) |
+| What changed in the scoring since (the replies are identical) | corrected: builder: reply doesn't claim it was shared (fail → pass in 17 runs) · added: 2 checks (54 instances, all passing) · removed: 0 |
 | Individual checks passed | **98.4%** (310/315, 95% CI 96–99%) |
 | Accuracy — access agent | **97.0%** (32/33, 95% CI 85–99%) |
 | Accuracy — builder agent | **100.0%** (108/108, 95% CI 97–100%) |
@@ -98,6 +101,19 @@ Review agent (HARNESS SELF-TEST — scripted reviewer that passes everything, `d
 
 **Review accuracy and name-fairness with the real model are NOT YET MEASURED** (`python -m evals.review_eval --mode live --yes`, ≈ $0.05).
 
+### Sites (Site agent)
+
+Source: `data\evals\20261126-113540-site-live`. Scored automatically: blocks the request gave no reason for, the form placed once, time and calculated cost.
+
+| Measure | Value |
+|---|---|
+| Site builds measured live | 1 (small sample — live (imported)) |
+| Site builds with blocks nobody asked for | 0/1 |
+| Site form placed correctly | 1/1 |
+| Site build — time / calculated cost | 22.6 s / $0.0545 |
+| Site agent's own cost per build | $0.0009 (1.6% of the build) |
+| Invented facts (checked by hand) | Checked by hand: date, time and place match the request. One addition — 'Riverside University' after 'Workshop B', taken from the workspace's name, not from the request. No prizes, names, emails or phone numbers invented. |
+
 ## 5. Testing approaches
 
 | Suite | What it proves | Result |
@@ -107,10 +123,16 @@ Review agent (HARNESS SELF-TEST — scripted reviewer that passes everything, `d
 | test_trace_flow | Tracing, redaction, retries, Validator, owner's view | pass · 20 checks |
 | test_responsible | Anonymity end to end, human decision on AI flags | pass · 14 checks |
 | test_minimisation | No emails or anonymous file names sent to the AI; respondents told about AI review | pass · 12 checks |
+| test_providers | AI provider switch: Claude / Groq / mixed; translation, errors, a full build on simulated Groq | pass · 28 checks |
+| test_creator | The account answers 'your name / email' for signed-in people; creator recognised | pass · 7 checks |
+| test_sites | Sites: only what was asked; theme free; extras only when switched on | pass · 24 checks |
+| test_play | Quizzes and party lights: scoring, live games, no answer leaks, host-only controls | pass · 35 checks |
+| test_proof | The proof tools: fingerprints catch edits, reproduce catches changes, examiner tasks fail when wrong | pass · 17 checks |
 | test_limits | Cost budget, rate limits, alerts | pass · 11 checks |
-| test_ui_smoke | Phone app and Control Center pages load without script errors | pass · 8 checks |
+| test_ui_smoke | Phone app and Control Center pages load without script errors | pass · 4 checks |
+| test_live | Open screens update by themselves within 2 s; files compressed and cached | pass · 8 checks |
 
-One command, no API key: `python -m tests.run_all` — 146 checks, last run 2026-11-25 22:57:42.
+One command, no API key: `python -m tests.run_all` — 261 checks, last run 2026-11-27 00:16:19.
 
 Also: the evaluation harness tests itself (a deliberately broken run must be caught), and a recorded live run is
 replayed without an API key to reproduce the results exactly.
@@ -167,3 +189,4 @@ Flow (every app's measured journey). All real; rehearsal data is labelled and ne
 - On normal (non-anonymous) apps, respondents' names still go to the API (needed to answer "who" questions);
   the text inside an anonymous file can still contain the author's name; anonymous response order is kept.
 - One reworded task was not exactly equivalent to the original ("Word file" vs "DOCX"); counted as a failure anyway.
+- Sites: one live build so far; the Site agent is not yet in the 12-task quality evaluation or the data-minimisation capture test.

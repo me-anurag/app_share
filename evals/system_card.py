@@ -51,6 +51,8 @@ def main():
     L_before = next((load(d, "load.json") for d in loads if any(a["errors"] for a in (load(d, "load.json") or {}).get("agents", []))), None)
     H = load(os.path.join(EV, "heldout.json"))
     T = load(os.path.join(EV, "tests.json"))
+    si_dir = newest("*-site-live")
+    SI = load(si_dir)
     M = Q["metrics"] if Q else None
     md = [f"# AppShare — system card and evaluation report", "",
           f"Generated {time.strftime('%Y-%m-%d %H:%M')} by `python -m evals.system_card` from the result files in `data/evals/`.",
@@ -59,7 +61,7 @@ def main():
 
     md += ["## The system", "",
            "AppShare lets people create small apps (forms, polls, registrations, bookings, requests, submissions) by describing them.",
-           "Seven Claude agents work as a team — Builder (lead), Data, Design, Access, Insights, Review, Reminder — but they never",
+           "Eight Claude agents work as a team — Builder (lead), Data, Design, Access, Site, Insights, Review, Reminder — but they never",
            "write code: they fill in a JSON spec that a fixed engine runs, and a plain-code **Validator** checks every spec before",
            "it is saved. Models: " + (f"Builder/Insights `{Q['meta']['models']['main']}`, specialists `{Q['meta']['models']['specialist']}`." if Q else "see configuration."), ""]
 
@@ -72,7 +74,8 @@ def main():
         eff = M["efficiency"].get("build", {})
         se = (M.get("success_efficiency") or {}).get("build", {})
         md.append(table([
-            ["Task success (every check passed)", pct(M["success"])],
+            ["Task success (every check passed) — re-scored by the current checks", pct(M["success"])],
+            *__import__("evals.eval_guide", fromlist=["audit_rows"]).audit_rows(pct),
             ["Individual checks passed", pct(M["checks"])],
             *[[f"Accuracy — {a} agent", pct(w)] for a, w in M["agent_accuracy"].items()],
             ["Validator accepted the Builder's first save", pct(M["first_pass_validity"])],
@@ -144,6 +147,11 @@ def main():
     if not r_live:
         md += ["**Review accuracy and name-fairness with the real model are NOT YET MEASURED** (`python -m evals.review_eval --mode live --yes`, ≈ $0.05).", ""]
 
+    from evals.eval_guide import site_rows
+    md += ["### Sites (Site agent)", "", f"Source: `{os.path.relpath(si_dir, ROOT) if si_dir else '—'}`. "
+           "Scored automatically: blocks the request gave no reason for, the form placed once, time and calculated cost.", "",
+           table(site_rows(SI), head=("Measure", "Value")), ""]
+
     # 5 testing
     md += ["## 5. Testing approaches", ""]
     if T:
@@ -193,6 +201,7 @@ def main():
            "- On normal (non-anonymous) apps, respondents' names still go to the API (needed to answer \"who\" questions);",
            "  the text inside an anonymous file can still contain the author's name; anonymous response order is kept.",
            "- One reworded task was not exactly equivalent to the original (\"Word file\" vs \"DOCX\"); counted as a failure anyway.",
+           "- Sites: one live build so far; the Site agent is not yet in the 12-task quality evaluation or the data-minimisation capture test.",
            ""]
     out = os.path.join(ROOT, "docs", "SYSTEM_CARD.md")
     os.makedirs(os.path.dirname(out), exist_ok=True)

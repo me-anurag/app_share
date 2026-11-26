@@ -39,6 +39,34 @@ def T(rows, head):
     return "\n".join(out)
 
 
+def site_rows(SI):
+    """Rows for the live site-build result (data/evals/*-site-live), or a clear 'not measured'."""
+    if not SI:
+        return [["Site builds (Site agent)", "not yet measured (`python -m evals.site_eval --live --yes`)"]]
+    s, r = SI["summary"], SI["results"]
+    return [
+        ["Site builds measured live", f"{s['tasks']} (small sample — {s['mode']})"],
+        ["Site builds with blocks nobody asked for", f"{s['with_unrequested_blocks']}/{s['tasks']}"],
+        ["Site form placed correctly", f"{s['form_ok']}/{s['tasks']}"],
+        ["Site build — time / calculated cost", f"{s['mean_secs']:.1f} s / ${s['mean_cost_usd']:.4f}"],
+        ["Site agent's own cost per build", f"${s['site_agent_cost_usd']:.4f} ({s['site_agent_cost_usd'] / s['mean_cost_usd'] * 100:.1f}% of the build)"],
+        ["Invented facts (checked by hand)", r[0]["facts_note"] if len(r) == 1 else "see results file"],
+    ]
+
+
+def audit_rows(fmt):
+    """The live run as scored at the time vs re-scored, and what changed — stated next to the headline, never hidden."""
+    from evals import proof
+    A = proof.audit()
+    if not A.get("available"):
+        return []
+    flips = "; ".join(f"{f['check']} ({'pass' if f['from'] else 'fail'} → {'pass' if f['to'] else 'fail'} in {f['count']} runs)" for f in A["flipped"]) or "none"
+    return [["Task success as scored at the live run, before one check was corrected", fmt(A["live_metrics"]["success"])],
+            ["Checks passed as scored at the live run", fmt(A["live_metrics"]["checks"])],
+            ["What changed in the scoring since (the replies are identical)",
+             f"corrected: {flips} · added: {len(A['added'])} checks ({sum(a['count'] for a in A['added'])} instances, all passing) · removed: {len(A['removed'])}"]]
+
+
 def rel(p):
     return os.path.relpath(p, ROOT).replace("\\", "/") if p else "—"
 
@@ -58,6 +86,8 @@ def build():
     LB = next((load(d, "load.json") for d in loads if any(a["errors"] for a in (load(d, "load.json") or {}).get("agents", []))), None)
     H = load(os.path.join(EV, "heldout.json"))
     TS = load(os.path.join(EV, "tests.json"))
+    si_dir = newest("*-site-live")
+    SI = load(si_dir)
     from backend.trace import PRICES
     from evals.cases import ALL, BUILD
 
@@ -85,7 +115,8 @@ def build():
     A("## 1. Results at a glance")
     A("")
     A(T([
-        ["Task success (every check of a task passed)", P(M["success"])],
+        ["Task success (every check of a task passed) — re-scored by the current checks", P(M["success"])],
+        *audit_rows(P),
         ["Individual checks passed", P(M["checks"])],
         ["Validator accepted the Builder's first save", P(M["first_pass_validity"])],
         ["Honesty — the reply never claims the app was shared", P(M["honesty"])],
@@ -99,17 +130,18 @@ def build():
         ["Simultaneous app builds that failed (16 at once)", f"before the fix {next(a['errors'] for a in LB['agents'] if a['builds'] == 16)} → after {next(a['errors'] for a in LA['agents'] if a['builds'] == 16)}" if LA and LB else "—"],
         ["Offline test suites (one command)", f"{len(TS['suites'])} suites · {TS['checks_passed']} checks · {'all pass' if not TS['suites_failed'] else str(TS['suites_failed']) + ' failing'}" if TS else "—"],
         ["Total calculated cost of the live quality evaluation", f"${M['total_cost_usd']:.4f}"],
+        *site_rows(SI),
     ], ("Measure", "Value")))
     A("")
     A(f"Sources: quality — `{rel(q_dir)}` (replay of the live run `{rel(live_dir)}`); load — `{rel(loads[-1]) if loads else '—'}`; "
-      f"held-out — `data/evals/heldout.json`; tests — `data/evals/tests.json`.")
+      f"held-out — `data/evals/heldout.json`; tests — `data/evals/tests.json`; sites — `{rel(si_dir)}`.")
     A("")
 
     # ------------------------------------------------------------------ 2 method
     A("## 2. How the evaluation works")
     A("")
-    A("**What is evaluated.** AppShare's seven Claude agents: the **Builder** (lead; Claude Opus) coordinates **Data**, **Design** and "
-      "**Access** (specialists; Claude Haiku) to turn a request into an app spec; **Insights** answers questions about responses; "
+    A("**What is evaluated.** AppShare's eight Claude agents: the **Builder** (lead; Claude Opus) coordinates **Data**, **Design**, "
+      "**Access** and, for sites, **Site** (specialists; Claude Haiku) to turn a request into an app spec; **Insights** answers questions about responses; "
       "**Review** reads each submission and flags problems; **Reminder** nudges people who haven't responded. The agents never write "
       "code: they fill in a JSON spec, and a plain-code **Validator** checks it before it is saved.")
     A("")
@@ -429,6 +461,7 @@ def build():
         ["Concurrent app builds failed with *database is locked*", "Reliability defect", "Commit immediately after each write; 13 → 0 failures at 16 builds"],
         ["Replays didn't reproduce network failures", "Reproducibility gap", "Failed API calls are now recorded and replayed"],
         ["Builder's stated reasons often restate instead of explaining", "Explainability weakness", "Prompt tightened; re-measurement pending"],
+        ["Signed-in visitor to a site whose only questions were name and email saw *0 of 0 answered* and an empty form", "UX defect (found by the live site build)", "One clear *Sign me up* button under *Answering as …*; applies to apps too"],
     ], ("What", "Kind", "What was done")))
     A("")
 
@@ -443,6 +476,7 @@ def build():
         ["`python -m evals.safety --mode fake` / `--mode live --yes`", "Attacks, guardrails off vs on", "free / ≈ $0.80"],
         ["`python -m evals.review_eval --mode fake` / `--mode live --yes`", "Review accuracy and fairness", "free / ≈ $0.05"],
         ["`python -m evals.heldout`", "Scanner on unseen attacks", "free"],
+        ["`python -m evals.site_eval --live --yes`", "Site builds: only what was asked, form placed, cost", "≈ $0.055 per task"],
         ["`python -m evals.load`", "Load and concurrency test", "free"],
         ["`python -m evals.system_card` · `python -m evals.eval_guide`", "Rebuild the system card / this guide from the results", "free"],
     ], ("Command", "What it does", "Cost")))
@@ -461,6 +495,7 @@ def build():
         "Load numbers are for one laptop and one server process, with a stand-in model.",
         "On normal (non-anonymous) apps, respondents' names still go to the API; text inside an anonymous file can still contain a name; anonymous response order is kept.",
         "Costs are calculated from published prices, not billed amounts.",
+        "Sites: one live build so far, and the Site agent is not yet part of the 12-task quality evaluation or the data-minimisation capture test.",
     ]:
         A(f"- {x}")
     A("")

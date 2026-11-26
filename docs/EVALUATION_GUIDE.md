@@ -1,6 +1,6 @@
 # AppShare — Evaluation guide
 
-**Evaluation, Safety and Deployment of LLM and Agentic Systems — what was measured, what every term means, how each value is calculated, and what is still to do.**  Generated 25 November 2026, 23:02 by `python -m evals.eval_guide`.
+**Evaluation, Safety and Deployment of LLM and Agentic Systems — what was measured, what every term means, how each value is calculated, and what is still to do.**  Generated 27 November 2026, 00:16 by `python -m evals.eval_guide`.
 
 > Every number in this guide is read from a measured result file in `data/evals/` (or the price table in `backend/trace.py`). None is typed by hand. Results from the harness self-test (a scripted stand-in model) are labelled as such and are never presented as agent quality. Costs are **calculated** (measured tokens × published prices), not taken from a bill.
 
@@ -10,7 +10,10 @@
 
 | Measure | Value |
 |---|---|
-| Task success (every check of a task passed) | **85.7%** (30/35; 95% CI 71–94%) |
+| Task success (every check of a task passed) — re-scored by the current checks | **85.7%** (30/35; 95% CI 71–94%) |
+| Task success as scored at the live run, before one check was corrected | **45.7%** (16/35; 95% CI 30–62%) |
+| Checks passed as scored at the live run | **91.6%** (239/261; 95% CI 88–94%) |
+| What changed in the scoring since (the replies are identical) | corrected: builder: reply doesn't claim it was shared (fail → pass in 17 runs) · added: 2 checks (54 instances, all passing) · removed: 0 |
 | Individual checks passed | **98.4%** (310/315; 95% CI 96–99%) |
 | Validator accepted the Builder's first save | **100.0%** (27/27; 95% CI 88–100%) |
 | Honesty — the reply never claims the app was shared | **100.0%** (27/27; 95% CI 88–100%) |
@@ -22,14 +25,20 @@
 | Share of input tokens served from the prompt cache | 57% |
 | Injection scanner on attacks it was never tuned on | 2/12 detected · 1/8 false alarms |
 | Simultaneous app builds that failed (16 at once) | before the fix 13 → after 0 |
-| Offline test suites (one command) | 7 suites · 146 checks · all pass |
+| Offline test suites (one command) | 13 suites · 261 checks · all pass |
 | Total calculated cost of the live quality evaluation | $1.2054 |
+| Site builds measured live | 1 (small sample — live (imported)) |
+| Site builds with blocks nobody asked for | 0/1 |
+| Site form placed correctly | 1/1 |
+| Site build — time / calculated cost | 22.6 s / $0.0545 |
+| Site agent's own cost per build | $0.0009 (1.6% of the build) |
+| Invented facts (checked by hand) | Checked by hand: date, time and place match the request. One addition — 'Riverside University' after 'Workshop B', taken from the workspace's name, not from the request. No prizes, names, emails or phone numbers invented. |
 
-Sources: quality — `data/evals/20261125-225743-replay` (replay of the live run `data/evals/20261125-182325-live`); load — `data/evals/20261125-224203-load`; held-out — `data/evals/heldout.json`; tests — `data/evals/tests.json`.
+Sources: quality — `data/evals/20261127-001329-replay` (replay of the live run `data/evals/20261125-182325-live`); load — `data/evals/20261125-224203-load`; held-out — `data/evals/heldout.json`; tests — `data/evals/tests.json`; sites — `data/evals/20261126-113540-site-live`.
 
 ## 2. How the evaluation works
 
-**What is evaluated.** AppShare's seven Claude agents: the **Builder** (lead; Claude Opus) coordinates **Data**, **Design** and **Access** (specialists; Claude Haiku) to turn a request into an app spec; **Insights** answers questions about responses; **Review** reads each submission and flags problems; **Reminder** nudges people who haven't responded. The agents never write code: they fill in a JSON spec, and a plain-code **Validator** checks it before it is saved.
+**What is evaluated.** AppShare's eight Claude agents: the **Builder** (lead; Claude Opus) coordinates **Data**, **Design**, **Access** and, for sites, **Site** (specialists; Claude Haiku) to turn a request into an app spec; **Insights** answers questions about responses; **Review** reads each submission and flags problems; **Reminder** nudges people who haven't responded. The agents never write code: they fill in a JSON spec, and a plain-code **Validator** checks it before it is saved.
 
 **The tasks.** 12 realistic tasks across the three workspaces (university, office, general): 9 app builds at three complexity levels, two Insights questions and one Reminder run. Each build task comes with a **reworded version** of the same request and a hand-written **reference answer**.
 
@@ -166,7 +175,7 @@ By agent: access 93% · builder 61% · data 85% · design 81%.
 | Daily AI budget | Calculated AI spend allowed per day; checked before any model call. | Σ cost of today's steps (trace store) | default $3.00 (configurable) |
 | Rate limit | AI requests one person may make per hour. | sliding one-hour window per person | default 30 (configurable) |
 | Alert | Shown on the Monitor: budget at 80%/100%, ≥3 failed agent runs in an hour, ≥5 server errors, people over the hourly limit. | computed live | — |
-| Regression gate | All offline test suites in one command; must pass before a change is trusted. | `python -m tests.run_all` | 146 checks |
+| Regression gate | All offline test suites in one command; must pass before a change is trusted. | `python -m tests.run_all` | 261 checks |
 
 ## 4. Results and checklists by chapter topic
 
@@ -247,8 +256,14 @@ Review agent — harness self-test (scripted reviewer that passes everything): f
 | test_trace_flow | Tracing, redaction, retries, Validator, owner's view | pass · 20 |
 | test_responsible | Anonymity end to end, human decision on AI flags | pass · 14 |
 | test_minimisation | No emails or anonymous file names sent to the AI; respondents told about AI review | pass · 12 |
+| test_providers | AI provider switch: Claude / Groq / mixed; translation, errors, a full build on simulated Groq | pass · 28 |
+| test_creator | The account answers 'your name / email' for signed-in people; creator recognised | pass · 7 |
+| test_sites | Sites: only what was asked; theme free; extras only when switched on | pass · 24 |
+| test_play | Quizzes and party lights: scoring, live games, no answer leaks, host-only controls | pass · 35 |
+| test_proof | The proof tools: fingerprints catch edits, reproduce catches changes, examiner tasks fail when wrong | pass · 17 |
 | test_limits | Cost budget, rate limits, alerts | pass · 11 |
-| test_ui_smoke | Phone app and Control Center pages load without script errors | pass · 8 |
+| test_ui_smoke | Phone app and Control Center pages load without script errors | pass · 4 |
+| test_live | Open screens update by themselves within 2 s; files compressed and cached | pass · 8 |
 
 |  | Checklist |
 |---|---|
@@ -338,6 +353,7 @@ The test found a real defect: an agent build held the database's write lock whil
 | Concurrent app builds failed with *database is locked* | Reliability defect | Commit immediately after each write; 13 → 0 failures at 16 builds |
 | Replays didn't reproduce network failures | Reproducibility gap | Failed API calls are now recorded and replayed |
 | Builder's stated reasons often restate instead of explaining | Explainability weakness | Prompt tightened; re-measurement pending |
+| Signed-in visitor to a site whose only questions were name and email saw *0 of 0 answered* and an empty form | UX defect (found by the live site build) | One clear *Sign me up* button under *Answering as …*; applies to apps too |
 
 ## 7. How to reproduce every number
 
@@ -350,6 +366,7 @@ The test found a real defect: an agent build held the database's write lock whil
 | `python -m evals.safety --mode fake` / `--mode live --yes` | Attacks, guardrails off vs on | free / ≈ $0.80 |
 | `python -m evals.review_eval --mode fake` / `--mode live --yes` | Review accuracy and fairness | free / ≈ $0.05 |
 | `python -m evals.heldout` | Scanner on unseen attacks | free |
+| `python -m evals.site_eval --live --yes` | Site builds: only what was asked, form placed, cost | ≈ $0.055 per task |
 | `python -m evals.load` | Load and concurrency test | free |
 | `python -m evals.system_card` · `python -m evals.eval_guide` | Rebuild the system card / this guide from the results | free |
 
@@ -364,6 +381,7 @@ The test found a real defect: an agent build held the database's write lock whil
 - Load numbers are for one laptop and one server process, with a stand-in model.
 - On normal (non-anonymous) apps, respondents' names still go to the API; text inside an anonymous file can still contain a name; anonymous response order is kept.
 - Costs are calculated from published prices, not billed amounts.
+- Sites: one live build so far, and the Site agent is not yet part of the 12-task quality evaluation or the data-minimisation capture test.
 
 ## 9. Where things are
 
