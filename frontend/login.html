@@ -13,65 +13,150 @@
   <title>Sign in · AppShare</title>
   <link rel="stylesheet" href="/static/style.css">
 </head>
-<body data-install>
-  <main class="login">
-    <div class="brand"><span class="mark" id="mk"></span><div><b style="font-size:1.15rem">AppShare</b><div class="muted small" id="orgLine">&nbsp;</div></div></div>
-    <h1 id="title">Sign in</h1>
-    <p class="muted" id="lead" style="margin-top:6px">&nbsp;</p>
-    <form id="form" class="card pad" style="margin-top:18px" novalidate></form>
-    <div id="err"></div>
-    <div class="section">
-      <div class="section-head"><span class="label" id="demoLabel">Demo accounts</span><span class="muted tiny">tap to sign in</span></div>
-      <div id="people"></div>
-    </div>
-    <div id="ver"></div>
+<body data-install class="auth-body">
+  <main class="auth">
+    <header class="auth-brand"><span class="mark" id="mk"></span><b>AppShare</b></header>
+
+    <section class="auth-hero">
+      <span class="auth-org hidden" id="org"></span>
+      <h1 id="title">Sign in</h1>
+      <p id="lead">&nbsp;</p>
+    </section>
+
+    <div class="auth-context hidden" id="ctx"></div>
+
+    <section class="auth-card">
+      <div id="recent"></div>
+      <form id="form" novalidate></form>
+      <div id="err" role="alert"></div>
+    </section>
+
+    <ul class="auth-points" id="points"></ul>
+
+    <button class="auth-sample" id="sample" type="button">Explore with a sample account</button>
+
+    <footer class="auth-foot">
+      <p id="fine"></p>
+      <div id="ver"></div>
+    </footer>
   </main>
   <script src="/static/common.js"></script>
   <script>
-    document.getElementById("mk").innerHTML = MARK;
-    document.getElementById("ver").innerHTML = versionLine();
+    // Sign-in, designed like the apps people already trust: who you're signing in to, one obvious field, one tap for
+    // accounts already used on this device, and context when you arrive from a shared link. Sample accounts exist for
+    // trying AppShare out, so they're one tap away — but they're not the page.
+    const $ = id => document.getElementById(id);
+    $("mk").innerHTML = MARK;
+    $("ver").innerHTML = versionLine();
     const next = new URLSearchParams(location.search).get("next") || "/";
     const go = () => { location.href = next.startsWith("/") ? next : "/"; };
-    const err = m => document.getElementById("err").innerHTML = `<div class="notice bad" style="margin-top:12px">${esc(m)}</div>`;
-    async function signIn(email) {
-      try { await api("/api/login", { json: { email }, allow401: true }); go(); } catch (e) { err(e.message); }
+    const RECENT_KEY = "appshare.recent";
+    const recent = () => { try { return JSON.parse(localStorage.getItem(RECENT_KEY) || "[]"); } catch { return []; } };
+    const remember = (email, name) => {
+      try {
+        const list = [{ email, name }, ...recent().filter(a => a.email !== email)].slice(0, 3);
+        localStorage.setItem(RECENT_KEY, JSON.stringify(list));
+      } catch { /* private mode: nothing remembered */ }
+    };
+    const forget = email => { try { localStorage.setItem(RECENT_KEY, JSON.stringify(recent().filter(a => a.email !== email))); } catch { /* ignore */ } };
+    const showErr = m => { $("err").innerHTML = m ? `<div class="auth-err">${ic("info")}<span>${esc(m)}</span></div>` : ""; };
+    let W = null;
+
+    async function signIn(email, btn) {
+      email = (email || "").trim().toLowerCase();
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { showErr("Enter your full email address."); return; }
+      showErr("");
+      const label = btn?.innerHTML;
+      if (btn) { btn.disabled = true; btn.innerHTML = `<span class="conn-spin"></span> Signing in…`; }
+      try {
+        await api("/api/login", { json: { email }, allow401: true });
+        remember(email, W?.people.find(p => p.email === email)?.name || email.split("@")[0]);
+        go();
+      } catch (e) {
+        showErr(e.message);
+        if (btn) { btn.disabled = false; btn.innerHTML = label; }
+      }
     }
-    const GROUP_TITLE = { university: { faculty: "Faculty", staff: "Staff", student: "Students" },
-                          office: { manager: "Managers", employee: "Employees", staff: "Staff" }, general: { member: "People" } };
+
+    function drawRecent() {
+      const list = recent().filter(a => !W || W.mode === "general" || W.people.some(p => p.email === a.email));
+      $("recent").innerHTML = list.length ? `<div class="auth-sub">Continue as</div>
+        <div class="auth-recent">${list.map(a => `<div class="auth-acct"><button type="button" data-email="${esc(a.email)}">
+            <span class="pi">${esc(initials(a.name))}</span><span class="grow"><b>${esc(a.name)}</b><span>${esc(a.email)}</span></span>${ic("arrow")}</button>
+            <button type="button" class="auth-x" data-forget="${esc(a.email)}" aria-label="Remove ${esc(a.name)} from this device">${ic("x")}</button></div>`).join("")}</div>
+        <div class="auth-or"><span>or use another account</span></div>` : "";
+      $("recent").querySelectorAll("[data-email]").forEach(b => b.onclick = () => signIn(b.dataset.email, b));
+      $("recent").querySelectorAll("[data-forget]").forEach(b => b.onclick = () => { forget(b.dataset.forget); drawRecent(); });
+    }
+
+    function samples() {
+      const GROUP = { university: { faculty: "Faculty", staff: "Staff", student: "Students" },
+                      office: { manager: "Managers", employee: "Employees", staff: "Staff" }, general: { member: "People" } }[W.mode] || {};
+      const groups = {};
+      W.people.forEach(p => (groups[p.kind] ||= []).push(p));
+      const sh = sheet(`<div class="sheet-head"><h2>Sample accounts</h2><button class="icon-btn" data-close aria-label="Close">${ic("x")}</button></div>
+        <p class="muted small" style="margin-bottom:12px">People in the sample ${esc(W.org)} workspace, with their apps and responses. Pick one to look around.</p>
+        <input class="input" id="sq" type="search" placeholder="Search by name or group" autocomplete="off">
+        <div id="sl" style="margin-top:6px"></div>`);
+      const draw = q => {
+        q = (q || "").toLowerCase();
+        sh.el.querySelector("#sl").innerHTML = Object.entries(groups).map(([k, list]) => {
+          list = list.filter(p => !q || `${p.name} ${p.title || ""} ${p.groups || ""}`.toLowerCase().includes(q));
+          return list.length ? `<div class="auth-sub" style="margin-top:14px">${esc(GROUP[k] || "People")}</div>
+            <div class="card">${list.map(p => `<button class="acct" data-email="${esc(p.email)}"><span class="pi">${esc(initials(p.name))}</span>
+              <span style="min-width:0"><b>${esc(p.name)}</b><span class="ellipsis">${esc(p.title || p.groups || p.email)}</span></span>${ic("chev")}</button>`).join("")}</div>` : "";
+        }).join("") || `<p class="muted" style="margin-top:14px">No one matches.</p>`;
+        sh.el.querySelectorAll(".acct").forEach(b => b.onclick = () => { sh.close(); signIn(b.dataset.email); });
+      };
+      draw("");
+      sh.el.querySelector("#sq").oninput = e => draw(e.target.value);
+    }
 
     api("/api/workspace", { allow401: true }).then(w => {
+      W = w;
       document.title = `Sign in · ${w.org}`;
-      document.getElementById("orgLine").textContent = `${w.org} · ${MODE_LABEL[w.mode]}`;
-      const f = document.getElementById("form");
-      if (w.mode === "general") {
-        document.getElementById("title").textContent = "Make and share little apps";
-        document.getElementById("lead").textContent = "RSVPs, polls, sign-ups and feedback forms — share them with a link, like a Doc.";
-        f.innerHTML = `<label class="field-lbl" for="n" style="margin-top:0">Your name</label><input class="input" id="n" autocomplete="name" required>
-          <label class="field-lbl" for="e">Email</label><input class="input" id="e" type="email" autocomplete="email" required>
-          <button class="btn primary block" style="margin-top:16px">Continue</button>`;
-        f.onsubmit = async ev => {
-          ev.preventDefault();
-          try { await api("/api/signup", { json: { name: f.querySelector("#n").value, email: f.querySelector("#e").value }, allow401: true }); go(); }
-          catch (e) { err(e.message); }
-        };
-        document.getElementById("demoLabel").textContent = "Or continue as someone from the demo";
-      } else {
-        const dom = (w.people[0]?.email || "").split("@")[1] || "";
-        document.getElementById("lead").textContent = w.mode === "university" ? `Use your ${w.org} email — students, faculty and staff.` : `Use your ${w.org} work email.`;
-        f.innerHTML = `<label class="field-lbl" for="e" style="margin-top:0">${w.mode === "university" ? "University" : "Work"} email</label>
-          <input class="input" id="e" type="email" placeholder="name@${esc(dom)}" autocomplete="email" required>
-          <button class="btn primary block" style="margin-top:14px">Sign in</button>`;
-        f.onsubmit = ev => { ev.preventDefault(); signIn(f.querySelector("#e").value); };
+      const uni = w.mode === "university", general = w.mode === "general";
+      const dom = (w.people[0]?.email || "").split("@")[1] || "";
+      $("org").innerHTML = `${ic(uni ? "building" : general ? "globe" : "building")}<span>${esc(w.org)}</span>`;
+      $("org").classList.toggle("hidden", general);
+      if (next.startsWith("/a/")) {
+        $("ctx").classList.remove("hidden");
+        $("ctx").innerHTML = `<span class="ctx-ic">${ic("link")}</span><div><b>Someone shared an app with you</b><span>Sign in and it opens straight away.</span></div>`;
       }
-      const titles = GROUP_TITLE[w.mode];
-      const groups = {};
-      w.people.forEach(p => (groups[p.kind] ||= []).push(p));
-      document.getElementById("people").innerHTML = Object.entries(groups).map(([k, list]) => `
-        <div class="muted tiny" style="margin:14px 2px 6px;font-weight:700;letter-spacing:.06em;text-transform:uppercase">${esc(titles[k] || "People")}</div>
-        <div class="card">${list.map(p => `<button class="acct" data-email="${esc(p.email)}"><span class="pi">${esc(initials(p.name))}</span>
-          <span style="min-width:0"><b>${esc(p.name)}</b><span class="ellipsis">${esc(p.title || p.groups || p.email)}</span></span>${ic("chev")}</button>`).join("")}</div>`).join("");
-      document.querySelectorAll(".acct").forEach(b => b.onclick = () => signIn(b.dataset.email));
-    });
+      if (general) {
+        $("title").textContent = "Make an app. Share it like a doc.";
+        $("lead").textContent = "RSVPs, polls, quizzes, sign-ups and event pages — described in a sentence, shared with a link.";
+        $("form").innerHTML = `<label class="auth-lbl" for="n">Your name</label><input class="input" id="n" autocomplete="name" required>
+          <label class="auth-lbl" for="e">Email</label>
+          <div class="auth-field">${ic("mail")}<input class="input" id="e" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com" required></div>
+          <button class="btn primary block auth-go" id="goBtn">Continue ${ic("arrow")}</button>`;
+        $("form").onsubmit = async ev => {
+          ev.preventDefault();
+          const b = $("goBtn"), email = $("e").value.trim(), name = $("n").value.trim();
+          b.disabled = true;
+          try { await api("/api/signup", { json: { name, email }, allow401: true }); remember(email.toLowerCase(), name); go(); }
+          catch (e) { showErr(e.message); b.disabled = false; }
+        };
+      } else {
+        $("title").textContent = `Sign in to ${w.org}`;
+        $("lead").textContent = uni ? "Make, share and answer apps with your classes, clubs and departments — with an assistant that handles the routine for you."
+                                    : "Requests, approvals, sign-ups and surveys for your team — with an assistant that handles the routine for you.";
+        $("form").innerHTML = `<label class="auth-lbl" for="e">${uni ? "University" : "Work"} email</label>
+          <div class="auth-field">${ic("mail")}<input class="input" id="e" type="email" inputmode="email" placeholder="name@${esc(dom)}" autocomplete="email" autocapitalize="off" spellcheck="false" required></div>
+          <button class="btn primary block auth-go" id="goBtn">Continue ${ic("arrow")}</button>`;
+        $("form").onsubmit = ev => { ev.preventDefault(); signIn($("e").value, $("goBtn")); };
+      }
+      $("points").innerHTML = [
+        [ "shield", general ? "Your apps are private until you share them." : `Only people at ${w.org} can sign in.` ],
+        [ "sparkle", "Your assistant prepares things — nothing happens until you confirm." ],
+        [ "link", "Share any app with a link, a group or the whole organisation." ],
+      ].map(([i, t]) => `<li>${ic(i)}<span>${esc(t)}</span></li>`).join("");
+      $("fine").textContent = general ? "By continuing you agree to use AppShare responsibly."
+                                      : "Email sign-in for this pilot. Your organisation's single sign-on can replace it.";
+      $("sample").onclick = samples;
+      drawRecent();
+      if (!recent().length) setTimeout(() => $("e")?.focus({ preventScroll: true }), 300);
+    }).catch(() => showErr("Can't reach AppShare right now. It will reconnect automatically."));
   </script>
 </body>
 </html>
