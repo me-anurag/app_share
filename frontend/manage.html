@@ -1,0 +1,420 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f4f1ea">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="AppShare">
+  <link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials">
+  <link rel="icon" href="/static/icons/icon-192.png">
+  <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+  <title>Manage · AppShare</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/looks.css">
+</head>
+<body data-install>
+  <main class="shell" id="root"><div class="empty">Loading…</div></main>
+  <script src="/static/common.js"></script>
+  <script src="/agents/characters.js"></script>
+  <script>
+    const appId = +location.pathname.split("/").pop();
+    const root = document.getElementById("root");
+    const $ = id => document.getElementById(id);
+    const TAB_ALIAS = { summary: "overview", look: "customize", edit: "customize" };
+    let A, tab = new URLSearchParams(location.search).get("tab") || "overview", insSession = null, editSession = null, statusFilter = "all";
+    tab = TAB_ALIAS[tab] || tab;
+
+    /** Light header: what it is, one line of facts, then Share · Open · More. The link lives in Share and More. */
+    function header() {
+      const s = A.spec;
+      const who = A.link_access === "public" ? "Anyone with the link" : A.link_access === "org" ? "Everyone at " + ME.org
+        : A.shares.length ? A.shares.map(x => x.name).slice(0, 2).join(", ") + (A.shares.length > 2 ? ` +${A.shares.length - 2}` : "") : "Not shared yet";
+      const meta = [s.closes_at ? deadline(s.closes_at).text : "No deadline", who].join(" · ");
+      return `<div class="app-head" id="appHead" style="--tc:${esc(s.theme_color)}">
+        <div class="row1"><span class="ti">${ic(kindOf(s.kind).icon)}</span>
+          <div class="over grow">${esc(kindOf(s.kind).label)}${A.is_owner ? "" : " · by " + esc(A.owner)}</div>${appWord(A)}</div>
+        <h1>${esc(s.title)}</h1>
+        <div class="meta">${esc(meta)}${(A.rules || []).length ? `<br><span class="muted">${A.rules.map(esc).join(" · ")}</span>` : ""}</div>
+        <div class="acts">
+          ${A.can_edit ? `<button class="btn primary" id="hShare">${ic("users")}${A.status === "draft" ? "Share" : "Sharing"}</button>` : `<button class="btn" id="hSend">${ic("send")}Send link</button>`}
+          <a class="btn" href="/a/${A.slug}?preview=1">${ic("eye")}Open</a>
+          <button class="btn" id="hMore" aria-label="More">${ic("dots")}</button></div>
+      </div>`;
+    }
+
+    async function load() {
+      A = await api(`/api/apps/${appId}`);
+      document.title = `${A.title} · AppShare`;
+      const tabs = [["overview", "Overview"], ["responses", "Responses", A.responses], ["ask", "Ask AI"], ...(A.can_edit ? [["customize", "Customize"]] : [])];
+      if (!tabs.some(t => t[0] === tab)) tab = "overview";
+      root.innerHTML = header() + `<nav class="utabs" role="tablist">${tabs.map(([k, l, c]) => `<button role="tab" data-tab="${k}" class="${k === tab ? "on" : ""}">${l}${c != null ? `<span class="c">${c}</span>` : ""}</button>`).join("")}</nav><div id="pane"></div>`;
+      bindHeader();
+      document.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => { tab = b.dataset.tab; history.replaceState(null, "", `?tab=${tab}`); load(); });
+      ({ overview: summary, responses, ask, customize })[tab]?.();
+    }
+
+    function bindHeader() {
+      const link = shareUrl(A.slug);
+      const sh = $("hShare"); if (sh) sh.onclick = () => openShare(A, res => { sharedSheet(A, res); load(); });
+      const sd = $("hSend"); if (sd) sd.onclick = () => sendLink(A.title, link);
+      $("hMore").onclick = more;
+    }
+    async function refreshHeader() {
+      A = await api(`/api/apps/${appId}`);
+      $("appHead").outerHTML = header();
+      bindHeader();
+    }
+
+    function more() {
+      const link = shareUrl(A.slug);
+      const s = sheet(`<div class="sheet-head"><h2>${esc(A.title)}</h2><button class="icon-btn" data-close aria-label="Close">${ic("x")}</button></div>
+        <div class="link-row" style="margin-bottom:12px"><code>${esc(link)}</code></div>
+        <div class="stack">
+          <button class="btn block" id="mCopy">${ic("copy")}Copy link</button>
+          <button class="btn block" id="mSend">${ic("send")}Send link…</button>
+          <a class="btn block" href="/api/apps/${appId}/export.csv">${ic("download")}Download responses (CSV)</a>
+          ${A.can_edit && A.status === "published" ? `<button class="btn block" id="mClose">${ic("lock")}Stop accepting responses</button>` : ""}
+          ${A.can_edit && A.status === "closed" ? `<button class="btn block" id="mOpen">${ic("check")}Reopen</button>` : ""}
+          ${A.is_owner ? `<button class="btn block danger" id="mDel">${ic("trash")}Delete app</button>` : ""}</div>`);
+      const on = (id, fn) => { const el = s.el.querySelector(id); if (el) el.onclick = fn; };
+      on("#mCopy", () => { copyLink(link); s.close(); });
+      on("#mSend", () => { sendLink(A.title, link); s.close(); });
+      on("#mClose", async () => { await api(`/api/apps/${appId}/status`, { json: { status: "closed" } }); s.close(); toast("Closed"); load(); });
+      on("#mOpen", async () => { await api(`/api/apps/${appId}/status`, { json: { status: "published" } }); s.close(); toast("Reopened"); load(); });
+      on("#mDel", async () => { if (!confirm("Delete this app and all its responses? This can't be undone.")) return; await api(`/api/apps/${appId}`, { method: "DELETE" }); location.href = "/"; });
+    }
+
+    // ------------------------------------------------------------ the owner's data: people as rows, questions as summaries
+    // Fields that identify or contact someone (name, phone, email, date, file) belong to a person and are read per person.
+    // Only real questions (choices, ratings, numbers, comments) are summarised across everyone.
+    const RECORD = new Set(["short_text", "email", "phone", "date", "file"]);
+    // A short text box is part of who someone is only when it asks for identity (name, roll number, team…);
+    // otherwise ("a note for Riya", "what do you hope to learn?") it's a comment and is summarised like one.
+    const ID_WORDS = /\b(name|phone|mobile|whatsapp|e-?mail|roll|reg(istration)?|id|employee|student|team|company|organi[sz]ation|department|section|class|address|city)\b/i;
+    const isIdentity = f => ["email", "phone", "date", "file"].includes(f.type) || (f.type === "short_text" && (ID_WORDS.test(f.label) || ID_WORDS.test(f.id.replace(/_/g, " "))));
+    const blank = v => v === undefined || v === null || v === "" || (Array.isArray(v) && !v.length);
+    const openRows = new Set();
+    let search = "";
+
+    function fmtPhone(v) {
+      const d = String(v);
+      return d.length > 10 && d.startsWith("+") ? d.slice(0, d.length - 10) + " " + d.slice(-10, -5) + " " + d.slice(-5) : d.length === 10 ? d.slice(0, 5) + " " + d.slice(5) : d;
+    }
+    function value(f, v) {
+      if (blank(v)) return `<span class="muted">—</span>`;
+      if (f.type === "file") return `<a href="/api/files/${v.file_id}">${ic("clip")} ${esc(v.name)}</a>`;
+      if (f.type === "rating") return `${"★".repeat(v)}<span class="muted">${"★".repeat(5 - v)}</span> <span class="muted small">${v}/5</span>`;
+      if (f.type === "phone") return `<a href="tel:${esc(v)}">${esc(fmtPhone(v))}</a>`;
+      if (f.type === "email") return `<a href="mailto:${esc(v)}">${esc(v)}</a>`;
+      if (f.type === "date") return esc(fmtDate(v, false));
+      return esc(Array.isArray(v) ? v.join(", ") : v);
+    }
+    /** One line that identifies a response: the person, then their contact details (no repeats of their name). */
+    function personLine(r, fields) {
+      const show = v => (blank(v) ? null : String(v).trim());
+      const ids = fields.filter(f => isIdentity(f) && f.type !== "file" && show(r.data[f.id]) && show(r.data[f.id]) !== r.name)
+        .map(f => f.type === "phone" ? fmtPhone(r.data[f.id]) : f.type === "date" ? fmtDate(r.data[f.id], false) : r.data[f.id]);
+      // then their main choice — "Tom · Can't make it", "Neha · Thu 11 am"
+      const choice = fields.find(f => ["radio", "select"].includes(f.type) && show(r.data[f.id]));
+      return [...ids.slice(0, 2), choice ? r.data[choice.id] : null].filter(Boolean).map(x => esc(x)).join(" · ");
+    }
+
+    async function summary() {
+      const [S, R] = await Promise.all([api(`/api/apps/${appId}/summary`), api(`/api/apps/${appId}/responses`)]);
+      const fields = R.fields.filter(f => f.type !== "info");
+      const pct = S.audience ? Math.min(100, Math.round(S.total / S.audience * 100)) : null;
+      const showPeople = !R.anonymous && R.responses.length > 0;
+      const byId = Object.fromEntries(fields.map(f => [f.id, f]));
+      const questions = S.questions.filter(q => q.type !== "file" && (R.anonymous ? true : !isIdentity(byId[q.id] || { type: q.type, label: q.label, id: q.id })));
+      const qHtml = questions.map(qq => {
+        if (qq.type === "rating") {
+          const max = Math.max(1, ...Object.values(qq.counts));
+          return `<div class="q"><span class="ql">${esc(qq.label)}</span><div class="row" style="align-items:flex-end;margin-top:8px"><span class="bigstat">${qq.average ?? "–"}</span><span class="muted small">out of 5 · ${qq.answered} ${qq.answered === 1 ? "rating" : "ratings"}</span></div>
+            <div class="dist">${[1, 2, 3, 4, 5].map(n => `<div><i style="height:${(qq.counts[n] / max) * 100}%" title="${qq.counts[n]}"></i>${n}</div>`).join("")}</div></div>`;
+        }
+        if (qq.counts) {
+          const total = Math.max(1, qq.answered);
+          return `<div class="q"><span class="ql">${esc(qq.label)}</span><div class="muted tiny">${qq.answered} answered${qq.type === "checkbox" ? " · more than one allowed" : ""}</div>
+            <div class="bars" style="margin-top:10px">${Object.entries(qq.counts).map(([o, n]) => `<div class="bar"><div class="bl"><span>${esc(o)}</span>
+              <span>${qq.limits?.[o] ? `${n} of ${qq.limits[o]} places` : `${n} · ${Math.round(n / total * 100)}%`}</span></div><div class="bt"><i style="width:${(qq.limits?.[o] ? n / qq.limits[o] : n / total) * 100}%"></i></div></div>`).join("")}</div></div>`;
+        }
+        if (qq.average != null) return `<div class="q"><span class="ql">${esc(qq.label)}</span><div class="row" style="margin-top:6px;gap:22px">
+          <span><span class="bigstat">${qq.average}</span><div class="muted tiny">average</div></span><span><b>${qq.min}–${qq.max}</b><div class="muted tiny">range</div></span>${qq.total != null ? `<span><b>${qq.total}</b><div class="muted tiny">total</div></span>` : ""}</div></div>`;
+        if (qq.samples) return `<div class="q"><span class="ql">${esc(qq.label)}</span><div class="muted tiny">${qq.answered} ${qq.answered === 1 ? "answer" : "answers"} · newest first</div>
+          <div class="stack" style="margin-top:10px">${qq.samples.length ? qq.samples.map(t => `<div class="quote">${esc(t)}</div>`).join("") : `<div class="muted small">No answers yet.</div>`}</div></div>`;
+        return "";
+      }).join("");
+      const latest = R.responses.slice(0, 5);
+      const capLine = [S.capacity.left != null ? `${S.capacity.left} of ${S.capacity.max} places left` : "", S.audience && pct != null ? `${pct}% done` : ""].filter(Boolean);
+      $("pane").innerHTML = `
+        <div class="sec card prog-card">
+          <div class="big"><b>${S.total}</b><span>${S.audience ? `of ${S.audience} responded` : S.total === 1 ? "response" : "responses"}</span></div>
+          ${pct != null ? `<div class="meter ${pct >= 100 ? "done" : ""}"><i style="width:${pct}%"></i></div>` : ""}
+          ${capLine.length ? `<div class="cap">${capLine.map(c => `<span>${c}</span>`).join("")}</div>` : ""}
+          ${R.missing.length ? `<div class="miss"><div class="who"><b>${R.missing.length} still to respond</b>${R.missing.slice(0, 4).map(m => esc(m.name)).join(", ")}${R.missing.length > 4 ? ` +${R.missing.length - 4}` : ""}</div>
+            ${A.can_edit && A.status === "published" ? `<button class="btn sm" id="remind">${ic("bell")}Remind</button>` : ""}</div>
+            <div id="remindOut"></div>${R.reminders.length ? `<div class="muted tiny" style="margin-top:8px">Last reminder ${esc(timeAgo(R.reminders[0].created_at))} · ${R.reminders[0].sent} sent</div>` : ""}`
+            : S.audience && S.total ? `<div class="miss"><div class="who"><b>Everyone has responded</b>Nothing to chase.</div></div>` : ""}
+          ${!S.total && A.status === "published" ? `<div class="miss"><div class="who"><b>No responses yet</b>Send the link to the people it's for.</div><button class="btn sm primary" id="sendNow">${ic("send")}Send link</button></div>` : ""}
+          ${A.status === "draft" ? `<div class="miss"><div class="who"><b>Not shared yet</b>Only you can see it. Share it to start collecting.</div></div>` : ""}
+        </div>
+        ${S.statuses.length ? `<div class="sec"><div class="sec-t"><h2>Requests</h2></div><div class="card glance" style="margin-top:0;grid-template-columns:repeat(${S.statuses.length},minmax(0,1fr))">${S.statuses.map((x, i) => `<button data-sf="${esc(x.name)}" class="${i === 0 && x.count ? "hot" : ""} ${x.count ? "" : "zero"}"><b>${x.count}</b><span>${esc(x.name)}</span></button>`).join("")}</div></div>` : ""}
+        ${showPeople ? `<div class="sec"><div class="sec-t"><h2>Latest responses</h2><span class="n">${R.responses.length}</span>${R.responses.length > latest.length ? `<button data-all>See all</button>` : ""}</div>
+          <div class="card list">${latest.map(r => `<button class="lrow person" data-row="${r.id}">
+            <span class="ti soft">${esc(initials(r.name))}</span>
+            <div><div class="t">${esc(r.name)}</div><div class="m">${personLine(r, fields) || esc(r.subtitle || "")}</div></div>
+            <span class="end">${r.status ? statusWord(r.status, R.statuses) : `<span style="font-weight:500">${esc(timeAgo(r.created_at))}</span>`}</span></button>`).join("")}</div></div>` : ""}
+        ${qHtml ? `<div class="sec"><div class="sec-t"><h2>${R.anonymous ? "Answers" : "Questions"}</h2>${R.anonymous ? `<span class="n">· anonymous</span>` : ""}</div><div class="card">${qHtml}</div></div>` : ""}
+        ${!S.total ? `<div class="sec card empty-state"><div class="ei">${ic("chart")}</div><b>Results appear here as people respond</b><p>People are listed one per row; questions are summarised with counts and charts.</p></div>` : ""}
+        ${A.can_edit ? `<div class="sec"><div class="card list"><button class="lrow" id="storyBtn">
+          <span class="ti soft">${ic("sparkle")}</span><div><div class="t">How this app was built</div><div class="m">What each AI agent decided, and why</div></div>
+          <span class="end">${ic("chev")}</span></button></div></div>` : ""}`;
+      const sb = $("storyBtn"); if (sb) sb.onclick = buildStory;
+      document.querySelectorAll("[data-sf]").forEach(b => b.onclick = () => go("responses", b.dataset.sf));
+      document.querySelectorAll("[data-all]").forEach(b => b.onclick = () => go("responses"));
+      document.querySelectorAll("[data-row]").forEach(b => b.onclick = () => { openRows.add(+b.dataset.row); go("responses"); });
+      const sn = $("sendNow"); if (sn) sn.onclick = () => sendLink(A.title, shareUrl(A.slug));
+      const rb = $("remind");
+      if (rb) rb.onclick = async () => {
+        rb.disabled = true; rb.textContent = "Reminding…";
+        const r = await api(`/api/apps/${appId}/remind`, { json: {} }).catch(e => ({ error: e.message }));
+        $("remindOut").innerHTML = `<div class="notice ${r.error ? "bad" : "ok"}" style="margin-top:10px">${ic(r.error ? "x" : "check")}<span>${esc(r.error || r.reply)}</span></div>`;
+        rb.disabled = false; rb.innerHTML = `${ic("bell")}Remind`;
+      };
+    }
+    /** "How this app was built": the agents' decisions in plain words, each with the reason the agent gave. */
+    const STORY_AGENT = { builder: "Builder", data: "Data agent", design: "Design agent", access: "Access agent" };
+    const STORY_JOB = { builder: "leads the team", data: "decides what to collect", design: "decides how it reads and looks", access: "decides who it's for" };
+    const secs = ms => ms == null ? "" : ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`;
+    async function buildStory() {
+      const s = sheet(`<div class="sheet-head"><h2>How this app was built</h2><button class="icon-btn" data-close aria-label="Close">${ic("x")}</button></div><div id="storyBody"><div class="muted small">Loading…</div></div>`);
+      let St;
+      try { St = await api(`/api/apps/${appId}/story`); } catch (e) { s.el.querySelector("#storyBody").innerHTML = `<div class="notice bad">${esc(e.message)}</div>`; return; }
+      const round = (r, i) => `
+        <div class="story-round ${i ? "older" : ""}">
+          <div class="story-when">${r.round === 1 ? "Built" : "Edit " + (r.round - 1)} · ${esc(new Date(r.when).toLocaleString([], { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }))}</div>
+          <div class="story-step you"><span class="sd">${ic("user")}</span><div><b>You asked</b><div class="quote">${esc(r.request)}</div></div></div>
+          ${r.steps.map(x => `<div class="story-step"><span class="sd ag">${ic(x.agent === "builder" ? "sparkle" : x.agent === "data" ? "list" : x.agent === "design" ? "pencil" : "users")}</span><div>
+            <b>${STORY_AGENT[x.agent]}</b> <span class="muted tiny">${STORY_JOB[x.agent]} · ${secs(x.ms)}</span>
+            <div class="small">${esc(x.did)}</div>
+            ${x.reason ? `<div class="story-why"><span>Why</span>${esc(x.reason)}</div>` : ""}</div></div>`).join("")}
+          ${r.validator.checks ? `<div class="story-step"><span class="sd ${r.validator.rejected ? "warn" : "ok"}">${ic("check")}</span><div>
+            <b>Checked by the Validator</b> <span class="muted tiny">rules, not AI</span>
+            <div class="small">${r.validator.checks} check${r.validator.checks > 1 ? "s" : ""}${r.validator.rejected ? `, ${r.validator.rejected} rejected and then fixed:` : " · all passed"}</div>
+            ${r.validator.problems_fixed.length ? `<ul class="story-ul">${r.validator.problems_fixed.map(p => `<li>${esc(p)}</li>`).join("")}</ul>` : ""}</div></div>` : ""}
+          ${r.reply ? `<div class="story-step"><span class="sd">${ic("message")}</span><div><b>What you were told</b><div class="quote">${esc(r.reply)}</div></div></div>` : ""}
+          <div class="story-foot">${secs(r.ms)} · ${r.agents} agent${r.agents > 1 ? "s" : ""} · ${r.model_calls} AI call${r.model_calls === 1 ? "" : "s"} · about $${r.cost.toFixed(3)}</div>
+        </div>`;
+      const after = St.after || {};
+      const afterLine = [after.reviews ? `${after.reviews} response${after.reviews > 1 ? "s" : ""} checked by the Review agent` : "",
+        after.reminders ? `${after.reminders} reminder run${after.reminders > 1 ? "s" : ""}` : "", after.questions ? `${after.questions} question${after.questions > 1 ? "s" : ""} answered` : ""].filter(Boolean);
+      s.el.querySelector("#storyBody").innerHTML = St.rounds.length
+        ? St.rounds.map(round).join("")
+          + (afterLine.length ? `<div class="story-after">${ic("chart")}<span>Since sharing: ${afterLine.join(" · ")}${after.cost ? ` · about $${after.cost.toFixed(3)}` : ""}</span></div>` : "")
+          + `<p class="muted tiny" style="margin-top:14px">Times and AI calls are measured. Costs are calculated from the tokens used at published prices, not a bill. “Why” is each agent's own stated reason. People's answers are never part of this record.</p>`
+        : `<div class="empty-state" style="padding:20px 6px"><div class="ei">${ic("sparkle")}</div><b>${St.origin === "template" ? "Made from a template" : "No build record"}</b>
+            <p>${St.origin === "template" ? "This app started from a ready-made template, so no AI agents were involved. Edits you ask the AI for will show here." : "This app was made before build records were kept. Changes you ask the AI for from now on will show here."}</p></div>`;
+      hydrateIcons(s.el);
+    }
+
+    function go(t, filter) {
+      if (filter) statusFilter = filter;
+      tab = t; history.replaceState(null, "", `?tab=${t}`); load(); scrollTo({ top: 0 });
+    }
+
+    /** The Review agent's flag, with its evidence. A flag is never a decision: the owner confirms or dismisses it. */
+    function reviewBox(v) {
+      const word = v.verdict === "ok" ? `<span class="sw ok">Looks fine</span>` : v.verdict === "check" ? `<span class="sw warn">Worth a look</span>` : `<span class="sw bad">Problem</span>`;
+      const ev = v.evidence || {};
+      const flagged = v.verdict !== "ok";
+      return `<div class="review-box"><div class="row"><b class="grow small">Review agent <span class="muted tiny">· AI</span></b>${word}</div>
+        <div class="small" style="margin-top:4px">${esc(v.summary)}</div>${v.flags.map(f => `<div class="tiny muted">· ${esc(f)}</div>`).join("")}
+        ${ev.reason ? `<div class="rv-why"><b>Evidence the AI gave</b>${esc(ev.reason)}</div>` : ""}
+        ${v.guard ? `<div class="rv-guard">${ic("lock")}<span>Safety check: ${esc(v.guard)}${ev.ai_verdict && ev.ai_verdict !== v.verdict ? ` (the AI first said “${esc(ev.ai_verdict)}”)` : ""}.</span></div>` : ""}
+        ${flagged ? (v.decision
+          ? `<div class="rv-decided">${ic("check")}<span>${v.decision === "confirmed" ? "Confirmed" : "Dismissed"} by ${esc(v.decided_by || "you")}</span></div>`
+          : A.can_edit ? `<div class="rv-decide"><span class="tiny muted">This is an AI flag, not a decision. Check the work, then:</span>
+              <div class="row"><button class="btn sm" data-decide="dismissed">Dismiss flag</button><button class="btn sm" data-decide="confirmed">Confirm problem</button></div></div>` : "") : ""}
+      </div>`;
+    }
+
+    // ------------------------------------------------------------ Responses: one row per person, tap for everything they sent
+    async function responses() {
+      const R = await api(`/api/apps/${appId}/responses`);
+      const fields = R.fields.filter(f => f.type !== "info");
+      const q = search.trim().toLowerCase();
+      const list = R.responses.filter(r => (statusFilter === "all" || r.status === statusFilter) &&
+        (!q || [r.name, r.email, ...Object.values(r.data).map(v => typeof v === "object" && v ? (v.name || (Array.isArray(v) ? v.join(" ") : "")) : v)].join(" ").toLowerCase().includes(q)));
+      $("pane").innerHTML = `
+        <div class="sec resp-tools">
+          <div class="search">${ic("search")}<input id="rq" placeholder="Search ${R.responses.length} ${R.responses.length === 1 ? "response" : "responses"}" value="${esc(search)}" autocomplete="off"></div>
+          <a class="btn" href="/api/apps/${appId}/export.csv" title="Download as a spreadsheet (CSV)" aria-label="Download CSV">${ic("download")}</a></div>
+        ${R.statuses.length ? `<div class="sec chips" id="sf" style="margin-top:12px">${["all", ...R.statuses].map(s => `<button class="chip ${s === statusFilter ? "on" : ""}" data-s="${esc(s)}">${s === "all" ? "All" : esc(s)} · ${s === "all" ? R.responses.length : R.responses.filter(r => r.status === s).length}</button>`).join("")}</div>` : ""}
+        <div class="sec" style="margin-top:12px">${list.length ? `<div class="card list">${list.map(r => {
+          const open = openRows.has(r.id);
+          return `<div class="rrow ${open ? "open" : ""}" data-id="${r.id}">
+            <button class="lrow" data-toggle>
+              <span class="ti soft">${R.anonymous ? ic("eyeoff") : esc(initials(r.name))}</span>
+              <div><div class="t">${esc(r.name)}</div><div class="m">${personLine(r, fields) || esc([r.subtitle, timeAgo(r.created_at)].filter(Boolean).join(" · "))}</div></div>
+              <span class="end">${r.status ? statusWord(r.status, R.statuses) : r.review && r.review.verdict !== "ok" ? `<span class="sw ${r.review.verdict === "check" ? "warn" : "bad"}">${r.review.verdict === "check" ? "Check" : "Problem"}</span>` : `<span style="font-weight:500">${esc(timeAgo(r.created_at))}</span>`}</span>
+            </button>
+            <div class="rdetail">
+              <dl class="ans-list">${fields.map(f => `<div><dt>${esc(f.label)}</dt><dd>${value(f, r.data[f.id])}</dd></div>`).join("")}
+                <div><dt>Sent</dt><dd>${esc(fmtDate(r.created_at))}${r.updated_at && r.updated_at !== r.created_at ? ` · changed ${esc(timeAgo(r.updated_at))}` : ""}${r.subtitle ? ` · ${esc(r.subtitle)}` : ""}</dd></div></dl>
+              ${r.review ? reviewBox(r.review) : ""}
+              ${r.status_note ? `<div class="quote" style="margin-top:10px">${esc(r.status_note)}</div>` : ""}
+              ${R.statuses.length && A.can_edit ? `<div class="status-ctl"><div class="opts">${R.statuses.map(s => `<button data-st="${esc(s)}" class="${s === r.status ? "on" : ""}">${esc(s)}</button>`).join("")}</div>
+                <div class="row"><input class="grow" placeholder="Note for ${R.anonymous ? "them" : esc(r.name.replace(/^(Prof\.|Dr\.|Ms\.|Mr\.|Mrs\.)\s*/, "").split(" ")[0])} (optional)" value="${esc(r.status_note || "")}"><button class="btn sm primary" data-save>Save</button></div>
+                <div class="muted tiny">They get a notification when you save.</div></div>` : ""}
+            </div></div>`; }).join("")}</div>`
+          : `<div class="card empty-state"><div class="ei">${ic("inbox")}</div><b>${q ? "No matches" : statusFilter !== "all" ? "None with this status" : "No responses yet"}</b><p>${q ? "Try another name or number." : statusFilter !== "all" ? "Try another filter." : "They'll appear here, one row per person, as people answer."}</p></div>`}</div>`;
+      const rq = $("rq");
+      let t;
+      rq.oninput = () => { clearTimeout(t); t = setTimeout(() => { search = rq.value; responses().then(() => { const n = $("rq"); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }); }, 220); };
+      document.querySelectorAll("#sf [data-s]").forEach(b => b.onclick = () => { statusFilter = b.dataset.s; responses(); });
+      document.querySelectorAll(".rrow").forEach(row => {
+        const id = +row.dataset.id;
+        row.querySelector("[data-toggle]").onclick = () => { row.classList.toggle("open"); row.classList.contains("open") ? openRows.add(id) : openRows.delete(id); };
+        let pick = null;
+        row.querySelectorAll("[data-st]").forEach(b => b.onclick = () => { pick = b.dataset.st; row.querySelectorAll("[data-st]").forEach(x => x.classList.toggle("on", x === b)); });
+        row.querySelectorAll("[data-decide]").forEach(b => b.onclick = async () => {
+          b.disabled = true;
+          await api(`/api/apps/${appId}/responses/${id}/review-decision`, { json: { decision: b.dataset.decide } });
+          toast(b.dataset.decide === "confirmed" ? "Flag confirmed — your decision is recorded" : "Flag dismissed — your decision is recorded");
+          responses();
+        });
+        const save = row.querySelector("[data-save]");
+        if (save) save.onclick = async () => {
+          const st = pick || row.querySelector("[data-st].on")?.dataset.st;
+          if (!st) return toast("Pick a status");
+          save.disabled = true;
+          await api(`/api/apps/${appId}/responses/${id}/status`, { json: { status: st, note: row.querySelector(".status-ctl input").value } });
+          toast(`Marked ${st} — they've been notified`);
+          responses();
+        };
+      });
+    }
+
+    // ------------------------------------------------------------ Ask (Insights agent)
+    function ask() {
+      const sugg = A.spec.statuses?.length ? ["How many are still pending?", "Summarize this week's requests"] :
+        A.spec.anonymous ? ["Summarize the comments", "What's the average rating?"] : ["Who hasn't responded yet?", "Summarize the answers"];
+      $("pane").innerHTML = `<div class="sec row" style="gap:12px"><span class="face">${face("insights")}</span>
+          <div class="grow"><b>Ask about the responses</b><div class="muted small">The Insights agent reads the real answers, so it doesn't guess.</div></div></div>
+        <div class="sec chips" id="sug">${sugg.map(s => `<button class="chip">${esc(s)}</button>`).join("")}</div>
+        <div class="sec convo" id="iConvo"></div>
+        <div class="card ask-box sec"><textarea id="iAsk" rows="2" placeholder="e.g. Which option is most popular?"></textarea>
+          <div class="bar"><span class="grow"></span><button class="btn primary sm" id="iGo">${ic("send")}Ask</button></div></div>`;
+      const go = async text => {
+        if (!text) return;
+        $("iConvo").insertAdjacentHTML("beforeend", `<div class="bubble me">${esc(text)}</div><div class="bubble agent" id="iWait">Thinking…</div>`);
+        $("iAsk").value = "";
+        const r = await api("/api/agent/insights", { json: { message: text, session_id: insSession, app_id: appId } }).catch(e => ({ error: e.message }));
+        insSession = r.session_id || insSession;
+        $("iWait").outerHTML = r.error ? `<div class="bubble err">${esc(r.error)}</div>` : `<div class="bubble agent">${esc(r.reply)}</div>`;
+      };
+      $("iGo").onclick = () => go($("iAsk").value.trim());
+      document.querySelectorAll("#sug .chip").forEach(c => c.onclick = () => go(c.textContent));
+    }
+
+    // ------------------------------------------------------------ Look (by hand — no AI, no tokens)
+    const STYLES = [["classic", "Classic", "Clean and friendly"], ["elegant", "Elegant", "Launches, invitations"], ["festive", "Festive", "Parties, RSVPs"],
+      ["playful", "Playful", "Clubs, polls, sign-ups"], ["bold", "Bold", "Events, hackathons"], ["minimal", "Minimal", "Surveys, feedback"],
+      ["academic", "Academic", "Courses, notices"], ["corporate", "Corporate", "Office requests"], ["natural", "Natural", "Food, wellness, nature"]];
+    const STYLE_PATTERN = { classic: "dots", elegant: "sparkle", festive: "confetti", playful: "rings", bold: "diagonal", minimal: "none", academic: "grid", corporate: "grid", natural: "leaves" };
+    const PATTERNS = ["none", "dots", "grid", "waves", "sparkle", "confetti", "leaves", "diagonal", "rings"];
+    const COLORS = ["#c4471a", "#a8452f", "#8a4b2a", "#5a6b2e", "#2f6f5e", "#1f5f7a", "#33507a", "#4a3f73", "#6b3f5e", "#5b6470", "#24221e"];
+
+    /** Customize = the look (by hand, free) + changes by describing them to the agents. */
+    function customize() {
+      $("pane").innerHTML = `<div id="lookPane"></div>
+        <div class="sec"><div class="sec-t"><h2>Change anything else</h2></div><div id="editPane"></div></div>`;
+      look(); edit();
+    }
+
+    function look() {
+      const s = A.spec, L = s.look || {}, color = s.theme_color || "#c4471a";
+      const coverUrl = L.cover ? `/api/a/${encodeURIComponent(A.slug)}/cover?v=${encodeURIComponent(L.cover)}` : "";
+      const box = $("lookPane") || $("pane");
+      box.innerHTML = `
+        <div class="sec">
+          <div class="lk lk-${esc(L.style)} look-prev" style="--tc:${esc(color)}">
+            <div class="lk-hero"><div class="lk-art ${L.cover ? "photo" : ""}" data-pattern="${esc(L.pattern)}" ${coverUrl ? `style="background-image:url('${coverUrl}')"` : ""}></div>
+              <div class="lk-head"><div class="lk-kicker">${ic(kindOf(s.kind).icon)}${esc(kindOf(s.kind).label)}</div><h1>${esc(s.title)}</h1>
+                ${s.description ? `<p class="desc">${esc(s.description.slice(0, 140))}${s.description.length > 140 ? "…" : ""}</p>` : ""}</div></div>
+            <div class="sample"><label class="choice"><input type="radio" checked><span class="mk"></span><span class="ct">How an answer looks</span></label>
+              <span class="btn primary sm" style="justify-self:end">Submit</span></div>
+          </div>
+          <p class="muted tiny" style="margin-top:8px">${ic("check")} Design changes save instantly and use no AI.</p>
+        </div>
+        <div class="sec"><div class="sec-t"><h2>Style</h2></div>
+          <div class="style-grid">${STYLES.map(([id, name, blurb]) => `<button class="style-tile lk lk-${id} ${L.style === id ? "on" : ""}" style="--tc:${esc(color)}" data-style="${id}">
+            <div class="lk-art" data-pattern="${STYLE_PATTERN[id]}"></div><b>${name}</b><span>${blurb}</span></button>`).join("")}</div></div>
+        <div class="sec"><div class="sec-t"><h2>Decoration</h2></div>
+          <div class="chips">${PATTERNS.map(p => `<button class="chip" data-pattern="${p}" style="${p === L.pattern ? "background:var(--ink);color:#fff;border-color:var(--ink)" : ""}">${p}</button>`).join("")}</div></div>
+        <div class="sec"><div class="sec-t"><h2>Colour</h2></div>
+          <div class="swatches">${COLORS.map(c => `<button style="background:${c}" class="${c.toLowerCase() === color.toLowerCase() ? "on" : ""}" data-color="${c}" aria-label="${c}"></button>`).join("")}
+            <input type="color" id="lkCustom" value="${esc(color)}" title="Any colour (must be dark enough for white text)"></div></div>
+        <div class="sec"><div class="sec-t"><h2>Cover picture</h2><span class="n">optional</span></div>
+          <div class="card pad row" style="gap:10px;flex-wrap:wrap">
+            <label class="btn">${ic("upload")}${L.cover ? "Replace picture" : "Upload a picture"}<input type="file" id="lkCover" accept="image/jpeg,image/png,image/webp" hidden></label>
+            ${L.cover ? `<button class="btn danger" id="lkRemove">${ic("trash")}Remove</button>` : ""}
+            <span class="muted small grow">JPG, PNG or WEBP up to 5 MB. Shown at the top of the app — a product photo, the venue, the poster.</span></div></div>`;
+      const save = async patch => {
+        try {
+          const r = await api(`/api/apps/${appId}/look`, { json: patch });
+          A.spec.look = r.look; A.spec.theme_color = r.theme_color;
+          look(); toast("Saved");
+        } catch (e) { toast(e.message); }
+      };
+      document.querySelectorAll("[data-style]").forEach(b => b.onclick = () => save({ style: b.dataset.style, pattern: STYLE_PATTERN[b.dataset.style] }));
+      box.querySelectorAll("[data-pattern].chip").forEach(b => b.onclick = () => save({ pattern: b.dataset.pattern }));
+      document.querySelectorAll("[data-color]").forEach(b => b.onclick = () => save({ theme_color: b.dataset.color }));
+      $("lkCustom").onchange = e => save({ theme_color: e.target.value });
+      $("lkCover").onchange = async e => {
+        const f = e.target.files[0];
+        if (!f) return;
+        const fd = new FormData(); fd.append("file", f);
+        try { const r = await api(`/api/apps/${appId}/cover`, { method: "POST", body: fd }); A.spec.look = r.look; look(); toast("Cover picture added"); }
+        catch (err) { toast(err.message); }
+      };
+      const rm = $("lkRemove");
+      if (rm) rm.onclick = async () => { const r = await api(`/api/apps/${appId}/cover`, { method: "DELETE" }); A.spec.look = r.look; look(); toast("Removed"); };
+    }
+
+    // ------------------------------------------------------------ Edit (agent team)
+    function edit() {
+      ($("editPane") || $("pane")).innerHTML = `
+        <p class="muted small" style="margin:0 2px">Describe the change and the agents make it: “extend the deadline by two days”, “add a question about dietary needs”, “limit it to 40 places”. Live apps update straight away.</p>
+        <div class="sec convo" id="eConvo" style="margin-top:12px"></div><div id="eProg"></div>
+        <div class="card ask-box" style="margin-top:12px"><textarea id="eAsk" rows="2" placeholder="What should change?"></textarea>
+          <div class="bar"><span class="grow muted tiny">${ME.agents ? "" : "Agents need an API key on the server."}</span><button class="btn primary sm" id="eGo">${ic("send")}Apply</button></div></div>`;
+      $("eGo").onclick = async () => {
+        const text = $("eAsk").value.trim();
+        if (!text) return;
+        $("eAsk").value = "";
+        $("eConvo").insertAdjacentHTML("beforeend", `<div class="bubble me">${esc(text)}</div>`);
+        const r = await runBuilder({ message: text, sessionId: editSession, appId, progressEl: $("eProg") }).catch(e => ({ error: e.message }));
+        editSession = r.session_id || editSession;
+        $("eConvo").insertAdjacentHTML("beforeend", r.error ? `<div class="bubble err">${esc(r.error)}</div>` : `<div class="bubble agent">${esc(r.reply)}</div>`);
+        if (r.app_changed) { toast("Saved"); await refreshHeader(); }
+      };
+    }
+
+    (async () => {
+      await renderTopbar({ back: { label: "Home", href: "/" } });
+      try { await load(); }
+      catch (e) { root.innerHTML = `<div class="card empty" style="margin-top:20px">${ic("lock")}<b>Can't open this</b><p>${esc(e.message)}</p><a class="btn" href="/" style="margin-top:12px">Home</a></div>`; }
+      window.addEventListener("appshare:reconnected", () => load().catch(() => {}));
+      // live: new responses, statuses and agent work show up without reloading — never while you're typing
+      Live.on(() => {
+        if (userIsBusy()) return;
+        if (tab === "overview" || tab === "responses") { const y = scrollY; load().then(() => scrollTo(0, y)).catch(() => {}); }
+        else refreshHeader().catch(() => {});
+      });
+    })();
+  </script>
+</body>
+</html>

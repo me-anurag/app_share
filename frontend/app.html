@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f4f1ea">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="AppShare">
+  <link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials">
+  <link rel="icon" href="/static/icons/icon-192.png">
+  <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+  <title>AppShare</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/looks.css">
+</head>
+<body>
+  <main class="shell" id="root" style="padding-bottom:28px;position:relative"><div class="empty">Loading…</div></main>
+  <script src="/static/common.js"></script>
+  <script>
+    // The generic renderer: turns any app spec into a working page. No per-app code exists.
+    const slug = location.pathname.split("/").pop();
+    const root = document.getElementById("root");
+    const RATING = ["Poor", "Fair", "Good", "Great", "Excellent"];
+    let D, dirty = false, onDone = false;
+
+    function guestBar() {
+      const bar = document.createElement("header");
+      bar.className = "topbar";
+      bar.innerHTML = `<div class="inner"><span class="mark">${MARK}</span><div class="ws"><b>AppShare</b><span>shared with a link</span></div>
+        <a class="btn sm" href="/login?next=${encodeURIComponent(location.pathname)}">Sign in</a></div>`;
+      document.body.prepend(bar);
+    }
+
+    function track(status, statuses) {
+      if (!status || !statuses?.length) return "";
+      const bad = /reject|declin|cancel/i.test(status);
+      const steps = bad ? [statuses[0], status] : statuses.filter(s => !/reject|declin|cancel/i.test(s));
+      const at = steps.indexOf(status);
+      return `<div class="track">${steps.map((s, i) => `${i ? `<span class="ln ${i <= at ? "on" : ""}"></span>` : ""}<span class="stp ${i <= at ? "on" : ""}"><i></i>${esc(s)}</span>`).join("")}</div>`;
+    }
+
+    function resultsHtml(results, mine) {
+      if (!results) return "";
+      const parts = results.filter(q => q.counts || q.average != null).map(q => {
+        if (q.type === "rating") {
+          const max = Math.max(1, ...Object.values(q.counts));
+          return `<div class="q"><span class="ql">${esc(q.label)}</span><div class="row" style="align-items:flex-end;margin-top:8px"><span class="bigstat">${q.average ?? "–"}</span><span class="muted small">/ 5 average · ${q.answered} ratings</span></div>
+            <div class="dist">${[1, 2, 3, 4, 5].map(n => `<div><i style="height:${(q.counts[n] / max) * 100}%"></i>${n}</div>`).join("")}</div></div>`;
+        }
+        if (q.counts) {
+          const total = Math.max(1, Object.values(q.counts).reduce((a, b) => a + b, 0));
+          const my = mine?.[q.id];
+          return `<div class="q"><span class="ql">${esc(q.label)}</span><div class="bars" style="margin-top:10px">${Object.entries(q.counts).map(([o, n]) => {
+            const isMine = Array.isArray(my) ? my.includes(o) : my === o;
+            return `<div class="bar ${isMine ? "mine" : ""}"><div class="bl"><span>${esc(o)}${isMine ? " · you" : ""}</span><span>${Math.round(n / total * 100)}% · ${n}</span></div><div class="bt"><i style="width:${n / total * 100}%"></i></div></div>`;
+          }).join("")}</div></div>`;
+        }
+        return `<div class="q"><span class="ql">${esc(q.label)}</span><div class="row" style="margin-top:6px"><span class="bigstat">${q.average}</span><span class="muted small">average · ${q.answered} answers</span></div></div>`;
+      });
+      return parts.length ? `<div class="section"><div class="section-head"><h2>Results so far</h2></div><div class="card">${parts.join("")}</div></div>` : "";
+    }
+
+    function fieldHtml(f, prev, cap) {
+      const v = prev?.[f.id];
+      const name = esc(f.id), req = f.required ? `<span class="req" aria-hidden="true">*</span>` : "";
+      const head = `<label class="ql" for="f_${name}">${esc(f.label)}${req}</label>${f.help ? `<div class="qh">${esc(f.help)}</div>` : ""}`;
+      const left = cap?.options?.[f.id] || {};
+      switch (f.type) {
+        case "info": return `<div class="q info"><span class="ql">${esc(f.label)}</span>${f.help ? `<div class="qh">${esc(f.help)}</div>` : ""}</div>`;
+        case "long_text": return `<div class="q" data-q="${name}">${head}<div class="ctl"><textarea id="f_${name}" name="${name}">${esc(v ?? "")}</textarea></div></div>`;
+        case "number": return `<div class="q" data-q="${name}">${head}<div class="ctl"><input class="input" id="f_${name}" type="number" inputmode="decimal" step="any" name="${name}" value="${esc(v ?? "")}" ${f.min !== undefined ? `min="${f.min}"` : ""} ${f.max !== undefined ? `max="${f.max}"` : ""}></div></div>`;
+        case "email": case "date": return `<div class="q" data-q="${name}">${head}<div class="ctl"><input class="input" id="f_${name}" type="${f.type}" name="${name}" value="${esc(v ?? "")}" ${f.type === "email" ? 'autocomplete="email" inputmode="email" placeholder="name@example.com"' : ""}></div></div>`;
+        case "phone": return `<div class="q" data-q="${name}">${head}<div class="ctl"><input class="input" id="f_${name}" type="tel" inputmode="tel" autocomplete="tel" placeholder="e.g. +91 98765 43210" name="${name}" value="${esc(v ?? "")}"></div></div>`;
+        case "select": return `<div class="q" data-q="${name}">${head}<div class="ctl"><select id="f_${name}" name="${name}"><option value="">Choose…</option>${f.options.map(o => {
+          const full = left[o] === 0 && o !== v;
+          return `<option ${o === v ? "selected" : ""} ${full ? "disabled" : ""}>${esc(o)}${left[o] !== undefined ? (full ? " — full" : ` — ${left[o]} left`) : ""}</option>`; }).join("")}</select></div></div>`;
+        case "radio": case "checkbox": {
+          const multi = f.type === "checkbox";
+          return `<div class="q" data-q="${name}" role="group" aria-labelledby="l_${name}"><span class="ql" id="l_${name}">${esc(f.label)}${req}</span>${f.help ? `<div class="qh">${esc(f.help)}</div>` : ""}
+            <div class="ctl choice-list">${f.options.map(o => {
+              const checked = multi ? (v || []).includes(o) : v === o;
+              const full = left[o] === 0 && !checked;
+              return `<label class="choice ${multi ? "multi" : ""} ${full ? "full" : ""}"><input type="${f.type}" name="${name}" value="${esc(o)}" ${checked ? "checked" : ""} ${full ? "disabled" : ""}>
+                <span class="mk"></span><span class="ct">${esc(o)}</span>${left[o] !== undefined ? `<span class="left">${full ? "Full" : `${left[o]} left`}</span>` : ""}</label>`;
+            }).join("")}</div></div>`;
+        }
+        case "rating": return `<div class="q" data-q="${name}" role="group"><span class="ql">${esc(f.label)}${req}</span>${f.help ? `<div class="qh">${esc(f.help)}</div>` : ""}
+          <div class="ctl rating">${[1, 2, 3, 4, 5].map(n => `<label><input type="radio" name="${name}" value="${n}" ${v === n ? "checked" : ""}>${n}<small>${RATING[n - 1]}</small></label>`).join("")}</div></div>`;
+        case "file": {
+          const cur = v && v.file_id;
+          return `<div class="q" data-q="${name}">${head}<div class="ctl"><label class="drop ${cur ? "has" : ""}" for="f_${name}"><span class="di">${ic(cur ? "check" : "upload")}</span>
+            <span class="grow" style="min-width:0"><b class="ellipsis" data-fname>${cur ? esc(v.name) : "Choose a file"}</b><span>${cur ? "Uploaded · tap to replace" : `${(f.accept || []).join(", ") || "Any file"} · up to ${f.max_mb} MB`}</span></span>
+            <input type="file" id="f_${name}" name="${name}" accept="${esc((f.accept || []).join(","))}" data-max="${f.max_mb}"></label></div></div>`;
+        }
+        default: return `<div class="q" data-q="${name}">${head}<div class="ctl"><input class="input" id="f_${name}" name="${name}" value="${esc(v ?? "")}" ${/name/i.test(f.label) ? 'autocomplete="name"' : ""}></div></div>`;
+      }
+    }
+
+    function answered(form, f) {
+      if (f.type === "file") { const i = form.querySelector(`[name="${f.id}"]`); return (i && i.files.length) || !!D.my_submission?.data?.[f.id]; }
+      const vals = new FormData(form).getAll(f.id).filter(x => x !== "");
+      return vals.length > 0;
+    }
+
+    /** The app wears its own look: style + pattern (+ cover photo) from the spec, rendered by looks.css. */
+    function applyLook() {
+      const s = D.spec, look = s.look || {};
+      document.body.className = `lk lk-${look.style || "classic"}`;
+      document.body.style.setProperty("--tc", s.theme_color || "#c4471a");
+      document.querySelector('meta[name="theme-color"]').content = ["festive", "bold"].includes(look.style) ? (look.style === "bold" ? "#141414" : s.theme_color) : getComputedStyle(document.body).getPropertyValue("--bg").trim() || "#ffffff";
+    }
+
+    function heroHtml(compact = false) {
+      const s = D.spec, look = s.look || {}, dl = deadline(s.closes_at);
+      const cover = look.cover ? `style="background-image:url('/api/a/${encodeURIComponent(slug)}/cover?v=${encodeURIComponent(look.cover)}')"` : "";
+      return `<header class="lk-hero">
+          <nav class="lk-nav">${!D.guest ? `<a href="/">${ic("back")}Home</a>` : "<span></span>"}${D.can_manage ? `<a href="/manage/${D.id}">${ic("grid")}Manage</a>` : ""}</nav>
+          <div class="lk-art ${look.cover ? "photo" : ""}" data-pattern="${esc(look.pattern || "dots")}" ${cover}></div>
+          <div class="lk-head">
+            <div class="lk-kicker">${ic(kindOf(s.kind).icon)}${esc(kindOf(s.kind).label)} · ${esc(D.owner)}</div>
+            <h1>${esc(s.title)}</h1>
+            ${s.description && !compact ? `<p class="desc">${esc(s.description)}</p>` : ""}
+            ${compact ? "" : `<div class="facts">
+              ${s.closes_at ? `<span class="fact ${dl.soon ? "hot" : ""}">${ic("clock")}${esc(dl.text)}</span>` : ""}
+              ${D.capacity.left != null ? `<span class="fact ${D.capacity.left <= 3 ? "hot" : ""}">${ic("users")}${D.capacity.left} of ${D.capacity.max} places left</span>` : ""}
+              ${s.anonymous ? `<span class="fact">${ic("eyeoff")}Anonymous — your name isn't shown</span>` : ""}
+              ${s.statuses?.length ? `<span class="fact">${ic("ticket")}You'll be told when it moves on</span>` : ""}
+              ${s.show_results === "after_submit" ? `<span class="fact">${ic("chart")}See results after answering</span>` : ""}
+            </div>`}
+          </div>
+        </header>`;
+    }
+    const footHtml = () => `<p class="lk-foot">Made with AppShare${D.guest ? ` · <a href="/login?next=${encodeURIComponent(location.pathname)}">Sign in</a>` : ""}</p>`;
+
+    function render(flash) {
+      const s = D.spec, many = D.many;
+      document.title = s.title;
+      const inputs = s.fields.filter(f => f.type !== "info");
+      const blockedMsg = { draft: "Preview — this is a draft. Share it to start collecting responses.", closed: "This app is closed.",
+        not_open: `Opens ${fmtDate(s.opens_at)}.`, full: "It's full — there are no places left.", already: "You've already responded." }[D.blocked];
+      const mineSub = D.my_submission;
+      root.innerHTML = `
+        ${heroHtml()}
+        ${flash || ""}
+        ${blockedMsg ? `<div class="notice ${D.blocked === "draft" ? "warn" : "bad"}" style="margin-top:12px">${ic("lock")}<span>${esc(blockedMsg)}</span></div>` : ""}
+        ${(D.can_submit || D.blocked === "draft") && (D.anonymous || D.ai_review) ? `<div class="privacy-note">
+          ${D.anonymous ? `<div>${ic("eyeoff")}<span><b>Anonymous.</b> ${esc(D.owner || "The owner")} sees your answers but never who sent them. Don't put your name in your answers${s.fields.some(f => f.type === "file") ? " or in the file or its name" : ""}.</span></div>` : ""}
+          ${D.ai_review ? `<div>${ic("sparkle")}<span><b>An AI assistant reads your answers${s.fields.some(f => f.type === "file") ? " and file" : ""}</b> to help ${esc(D.owner || "the owner")} check them. It can only flag things — a person makes every decision.</span></div>` : ""}
+        </div>` : ""}
+        ${many && D.my_submissions.length ? `<div class="section"><div class="section-head"><h2>Your requests</h2><span class="muted small">${D.my_submissions.length}</span></div>
+          <div class="card">${D.my_submissions.map(m => { const first = s.fields.find(f => f.type !== "info" && f.type !== "file"); const v = first ? m.data[first.id] : "";
+            return `<div class="resp"><div class="rh"><div class="grow" style="min-width:0"><b class="ellipsis" style="display:block">${esc(Array.isArray(v) ? v.join(", ") : v || "Request")}</b>
+              <span class="muted tiny">Sent ${esc(timeAgo(m.created_at))}</span></div>${statusTag(m.status, s.statuses)}</div>${track(m.status, s.statuses)}
+              ${m.status_note ? `<div class="quote" style="margin-top:10px">${esc(m.status_note)}</div>` : ""}</div>`; }).join("")}</div></div>` : ""}
+        ${mineSub && !many ? `<div class="notice ok" style="margin-top:12px">${ic("check")}<span>You responded ${esc(timeAgo(mineSub.updated_at))}.${D.can_submit ? " You can change your answers below." : ""}</span></div>` : ""}
+        ${mineSub?.status ? `<div class="card pad" style="margin-top:10px"><div class="row"><b class="grow">Status</b>${statusTag(mineSub.status, s.statuses)}</div>${track(mineSub.status, s.statuses)}</div>` : ""}
+        ${D.results ? resultsHtml(D.results, mineSub?.data) : ""}
+        ${D.can_submit || D.blocked === "draft" ? `
+          <div class="section"><div class="section-head"><h2>${many && D.my_submissions.length ? "New request" : mineSub ? "Your answers" : "Your answers"}</h2><span class="muted small">${inputs.filter(f => f.required).length ? "* required" : ""}</span></div>
+          <form id="form" class="card" novalidate>${s.fields.map(f => fieldHtml(f, many ? null : mineSub?.data, D.capacity)).join("")}</form></div>
+          <div id="formMsg"></div>
+          <div class="submit-bar"><div class="prog"><small id="progT"></small><div class="meter"><i id="progB" style="width:0"></i></div></div>
+            <button class="btn primary" id="go" ${D.blocked === "draft" ? "disabled" : ""}>${mineSub && !many ? "Update" : "Submit"}</button></div>` : ""}
+        ${footHtml()}`;
+
+      const form = document.getElementById("form");
+      if (!form) return;
+      const prog = () => {
+        const done = inputs.filter(f => answered(form, f)).length;
+        document.getElementById("progT").textContent = `${done} of ${inputs.length} answered`;
+        document.getElementById("progB").style.width = (inputs.length ? done / inputs.length * 100 : 100) + "%";
+      };
+      form.addEventListener("input", prog); form.addEventListener("change", prog); prog();
+      dirty = false; onDone = false;
+      form.addEventListener("input", () => { dirty = true; }); form.addEventListener("change", () => { dirty = true; });
+      form.querySelectorAll("input[type=file]").forEach(inp => inp.addEventListener("change", () => {
+        const lab = inp.closest(".drop"), file = inp.files[0];
+        if (!file) return;
+        lab.classList.add("has");
+        lab.querySelector("[data-fname]").textContent = file.name;
+        lab.querySelector("span:not(.di) span").textContent = `${(file.size / 1048576).toFixed(1)} MB · tap to change`;
+        lab.querySelector(".di").innerHTML = ic("check");
+      }));
+      document.getElementById("go").onclick = () => submit(form);
+    }
+
+    async function submit(form) {
+      const msg = document.getElementById("formMsg");
+      form.querySelectorAll(".q.err").forEach(q => q.classList.remove("err"));
+      const missing = D.spec.fields.filter(f => f.required && f.type !== "info" && !answered(form, f));
+      for (const inp of form.querySelectorAll("input[type=file]")) {
+        const file = inp.files[0];
+        if (file && file.size > +inp.dataset.max * 1048576) { msg.innerHTML = `<div class="notice bad" style="margin-top:12px">${ic("x")}<span>${esc(file.name)} is larger than ${inp.dataset.max} MB.</span></div>`; return; }
+      }
+      if (missing.length) {
+        missing.forEach(f => form.querySelector(`[data-q="${f.id}"]`)?.classList.add("err"));
+        form.querySelector(".q.err")?.scrollIntoView({ behavior: "smooth", block: "center" });
+        msg.innerHTML = `<div class="notice bad" style="margin-top:12px">${ic("x")}<span>Please answer: ${missing.map(f => esc(f.label)).join(", ")}</span></div>`;
+        return;
+      }
+      const btn = document.getElementById("go");
+      btn.disabled = true; btn.textContent = "Sending…";
+      try {
+        const res = await api(`/api/a/${slug}/submit`, { method: "POST", body: new FormData(form), allow401: D.guest });
+        const mine = Object.fromEntries([...new FormData(form).keys()].map(k => [k, new FormData(form).getAll(k).length > 1 ? new FormData(form).getAll(k) : new FormData(form).get(k)]));
+        D = await api(`/api/a/${slug}`, { allow401: true });
+        root.innerHTML = `${heroHtml(true)}<div class="card done-card" style="margin-top:14px"><div class="big">${ic("check")}</div><h2>${res.updated ? "Updated" : "Sent"}</h2>
+            <p class="muted" style="margin-top:6px">${esc(res.message)}</p>
+            ${res.status ? `<div style="margin-top:14px">${statusTag(res.status, D.spec.statuses)}<p class="muted small" style="margin-top:6px">You'll get a notification when it changes.</p></div>` : ""}
+          </div>
+          ${resultsHtml(res.results, mine)}
+          <div class="row" style="margin-top:14px;flex-wrap:wrap">
+            ${D.can_submit ? `<button class="btn grow" id="again">${D.many ? ic("plus") + "Send another" : ic("pencil") + "Change answers"}</button>` : ""}
+            ${!D.guest ? `<a class="btn primary grow" href="/">${ic("home")}Back to home</a>` : ""}</div>${footHtml()}`;
+        onDone = true;
+        const again = document.getElementById("again");
+        if (again) again.onclick = () => { render(); scrollTo(0, 0); };
+        scrollTo(0, 0);
+      } catch (e) {
+        msg.innerHTML = `<div class="notice bad" style="margin-top:12px;white-space:pre-wrap">${ic("x")}<span>${esc(e.message)}</span></div>`;
+        btn.disabled = false; btn.textContent = D.my_submission && !D.many ? "Update" : "Submit";
+      }
+    }
+
+    (async () => {
+      try { D = await api(`/api/a/${slug}`, { allow401: true }); }
+      catch (e) {
+        if (e.status === 401) { location.href = "/login?next=" + encodeURIComponent(location.pathname); return; }
+        guestBar();
+        root.innerHTML = `<div class="card empty" style="margin-top:20px">${ic("lock")}<b>Can't open this app</b><p style="margin-top:6px">${esc(e.message)}. Ask the person who shared it to add you.</p></div>`;
+        return;
+      }
+      applyLook();      // the app is the page: its own design, no AppShare top bar
+      render();
+      // live: places left, results and request statuses update by themselves — but never over someone's half-filled answers
+      Live.on(async () => {
+        if (dirty || onDone || userIsBusy()) return;
+        try { const y = scrollY; D = await api(`/api/a/${slug}`, { allow401: true }); applyLook(); render(); scrollTo(0, y); } catch { /* keep what's shown */ }
+      });
+    })();
+  </script>
+</body>
+</html>
