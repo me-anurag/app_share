@@ -16,7 +16,8 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Resp
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import access, agents, installs, limits, monitor, templates, trace
+from . import access, agents, installs, limits, monitor, play, templates, trace
+from .site import BACKGROUNDS as SITE_BACKGROUNDS, BLOCK_TYPES as SITE_BLOCK_TYPES, THEMES as SITE_THEMES
 from .db import BASE_DIR, DB_PATH, MODE, ORG_NAME, UPLOAD_DIR, VOCAB, add_user, dumps, get_db, init_db
 from .spec import (COVER_RE, LOOK_PATTERNS, LOOK_STYLES, check_file, check_value, contrast_with_white, describe_rules,
                    normalize_look, summarize, window_state)
@@ -82,7 +83,7 @@ async def track_requests(request: Request, call_next):
         INSTALL_FETCHES.append({"at": time.strftime("%H:%M:%S"), "path": path, "ua": request.headers.get("user-agent", "")[:200],
                                 "cookie": bool(request.cookies)})
         del INSTALL_FETCHES[:-40]
-    if path.startswith(QUIET_PATHS):
+    if path.startswith(QUIET_PATHS) or (request.method == "GET" and path.endswith("/live") and path.startswith("/api/a/")):
         return await call_next(request)
     did = request.cookies.get(monitor.DEVICE_COOKIE)
     new_did = None if did else secrets.token_urlsafe(9)
@@ -627,6 +628,209 @@ def delete_app(app_id: int, user=Depends(current_user)):
     return {"ok": True}
 
 
+# --------------------------------------------------------------------------- play: quizzes, live games, party lights
+
+def _player(conn, slug, request):
+    """Who is playing: (app, spec, user, player key, is_host). Same access rules as opening the app."""
+    user = optional_user(request)
+    a = load_app(conn, slug=slug)
+    role = None
+    if user:
+        role = access.effective_role(conn, a, user["id"])
+        if not role and a["link_access"] == "public" and a["status"] != "draft":
+            role = "submitter"
+        if not role:
+            require(conn, a, user, "submitter")
+    elif a["link_access"] != "public" or a["status"] == "draft":
+        raise HTTPException(401, "Sign in to open this app")
+    is_host = bool(role) and access.at_least(role, "editor")
+    if a["status"] == "draft" and not is_host:
+        raise HTTPException(400, "This app is a draft preview.")
+    did = getattr(request.state, "did", None) or request.cookies.get(monitor.DEVICE_COOKIE)
+    pkey = f"u{user['id']}" if user else (f"d{did}" if did else None)
+    return a, json.loads(a["spec"]), user, pkey, is_host
+
+
+def _is_live(spec):
+    return spec.get("kind") == "party" or (spec.get("quiz") or {}).get("mode") == "host"
+
+
+@app.get("/api/a/{slug}/live")
+def play_view(slug: str, request: Request, host: int = 0):
+    with get_db() as conn:
+        a, spec, user, pkey, is_host = _player(conn, slug, request)
+        if not _is_live(spec):
+            raise HTTPException(400, "This app has no live game.")
+        if spec.get("kind") == "party" and pkey and not host:
+            play.join(conn, a["id"], pkey, "")          # a phone in the room counts and gets a place in the wave
+        return play.view(conn, a, spec, None if host else pkey, is_host and bool(host))
+
+
+class JoinIn(BaseModel):
+    name: str
+
+
+@app.post("/api/a/{slug}/live/join")
+def play_join(slug: str, body: JoinIn, request: Request):
+    with get_db() as conn:
+        a, spec, user, pkey, _ = _player(conn, slug, request)
+        if not pkey:
+            raise HTTPException(400, "Your browser blocked cookies; allow them to play.")
+        name = body.name.strip() or (user["name"].split(" ")[0] if user else "")
+        if not name:
+            raise HTTPException(400, "Type a nickname to join.")
+        if spec.get("anonymous") and user:
+            pass                                            # a nickname is all anyone sees
+        play.join(conn, a["id"], pkey, name)
+    return {"ok": True}
+
+
+class AnswerIn(BaseModel):
+    q: int
+    answer: str | list[str]
+
+
+@app.post("/api/a/{slug}/live/answer")
+def play_answer(slug: str, body: AnswerIn, request: Request):
+    with get_db() as conn:
+        a, spec, user, pkey, _ = _player(conn, slug, request)
+        row = conn.execute("SELECT id, name FROM players WHERE app_id = ? AND pkey = ?", (a["id"], pkey)).fetchone() if pkey else None
+        if not row or not row["name"]:
+            raise HTTPException(400, "Join with a nickname first.")
+        try:
+            pts = play.answer(conn, a, spec, row["id"], body.q, body.answer)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+    monitor.emit("quiz_answer", app_id=a["id"], title=a["title"], q=body.q + 1)
+    return {"ok": True, "locked": True}          # right or wrong is shown at the reveal, not now
+
+
+class ControlIn(BaseModel):
+    action: str
+    scene: str | None = None
+    colors: list[str] | None = None
+    bpm: int | None = None
+    message: str | None = None
+    on: bool | None = None
+
+
+@app.post("/api/apps/{app_id}/live")
+def play_control(app_id: int, body: ControlIn, user=Depends(current_user)):
+    with get_db() as conn:
+        a = load_app(conn, app_id)
+        require(conn, a, user, "editor")
+        spec = json.loads(a["spec"])
+        try:
+            st = play.control(conn, a, spec, body.action, body.model_dump(exclude_none=True))
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+    monitor.emit("live_control", app_id=app_id, title=a["title"], user=user["name"], action=body.action)
+    return {"ok": True, "state": st}
+
+
+@app.get("/api/a/{slug}/leaderboard")
+def quiz_leaderboard(slug: str, request: Request):
+    with get_db() as conn:
+        a, spec, user, pkey, is_host = _player(conn, slug, request)
+        if not spec.get("quiz") or spec["quiz"]["mode"] != "self":
+            raise HTTPException(400, "This app has no leaderboard.")
+        if not spec["quiz"]["leaderboard"] and not is_host:
+            raise HTTPException(403, "The leaderboard is private.")
+        return {"leaderboard": [{k: v for k, v in r.items() if k != "sid"} for r in play.leaderboard(conn, a, spec)]}
+
+
+@app.get("/a/{slug}/host")
+def host_page(slug: str):
+    return page("host.html")
+
+
+# --------------------------------------------------------------------------- sites: the owner is in control
+# Theme, background, footer and the badge change by tapping (no AI). A suggested extra is written by one small
+# AI call only when the owner switches it on; switching it off removes that block. Nothing is ever added unasked.
+
+class SiteLookIn(BaseModel):
+    theme: str | None = None
+    background: str | None = None
+    accent: str | None = None
+    footer: str | None = None
+    show_badge: bool | None = None
+
+
+def _site_of(conn, app_id, user):
+    a = load_app(conn, app_id)
+    require(conn, a, user, "editor")
+    spec = json.loads(a["spec"])
+    if spec.get("kind") != "site" or not spec.get("site"):
+        raise HTTPException(400, "This app isn't a site.")
+    return a, spec
+
+
+@app.post("/api/apps/{app_id}/site/look")
+def set_site_look(app_id: int, body: SiteLookIn, user=Depends(current_user)):
+    with get_db() as conn:
+        a, spec = _site_of(conn, app_id, user)
+        site = spec["site"]
+        if body.theme is not None:
+            if body.theme not in SITE_THEMES:
+                raise HTTPException(400, f"theme must be one of {', '.join(SITE_THEMES)}")
+            site["theme"] = body.theme
+        if body.background is not None:
+            if body.background not in SITE_BACKGROUNDS:
+                raise HTTPException(400, f"background must be one of {', '.join(SITE_BACKGROUNDS)}")
+            site["background"] = body.background
+        if body.accent is not None:
+            if body.accent and not re.fullmatch(r"#[0-9a-fA-F]{6}", body.accent):
+                raise HTTPException(400, "colour must look like #1f5f7a")
+            site["accent"] = body.accent
+        if body.footer is not None:
+            site["footer"] = body.footer.strip()[:200]
+        if body.show_badge is not None:
+            site["show_badge"] = body.show_badge
+        _save_spec(conn, app_id, spec)
+    monitor.emit("app_updated", app_id=app_id, title=a["title"], user=user["name"])
+    return {"ok": True, "site": site}
+
+
+class SiteExtraIn(BaseModel):
+    type: str
+    on: bool
+    note: str = ""
+
+
+@app.post("/api/apps/{app_id}/site/extra")
+def toggle_site_extra(app_id: int, body: SiteExtraIn, user=Depends(current_user)):
+    with get_db() as conn:
+        a, spec = _site_of(conn, app_id, user)
+    site = spec["site"]
+    first = site["pages"][0]
+    if not body.on:                                  # off: remove the extra block(s) of this type — free
+        before = sum(len(p["blocks"]) for p in site["pages"])
+        for p in site["pages"]:
+            p["blocks"] = [b for b in p["blocks"] if not (b.get("extra") and b["type"] == body.type)]
+        removed = before - sum(len(p["blocks"]) for p in site["pages"])
+    else:
+        if body.type not in SITE_BLOCK_TYPES or body.type == "form":
+            raise HTTPException(400, "That kind of block can't be added.")
+        if any(b.get("extra") and b["type"] == body.type for p in site["pages"] for b in p["blocks"]):
+            return {"ok": True, "site": site, "added": None}
+        try:
+            agents._limit(user["id"], user["name"])
+            block = agents.write_site_extra(site, spec["title"], body.type, body.note.strip()[:300], user["name"],
+                                            any(f["type"] != "info" for f in spec["fields"]))
+        except agents.AgentError as e:
+            raise HTTPException(503, str(e))
+        blocks = first["blocks"]
+        at = next((i for i, b in enumerate(blocks) if b["type"] == "form"), len(blocks))   # extras go above the form
+        blocks.insert(at, block)
+        removed = 0
+    with get_db() as conn:
+        a, fresh = _site_of(conn, app_id, user)
+        fresh["site"] = site
+        _save_spec(conn, app_id, fresh)
+    monitor.emit("app_updated", app_id=app_id, title=a["title"], user=user["name"])
+    return {"ok": True, "site": site, "added": body.type if body.on else None, "removed": removed}
+
+
 # --------------------------------------------------------------------------- look: style, pattern, colour, cover
 # Changing the design by hand costs no tokens: the owner taps a style, the engine renders it.
 
@@ -827,6 +1031,9 @@ def open_app(slug: str, request: Request):
             role = "guest"
         spec = json.loads(a["spec"])
         spec["look"] = normalize_look(spec.get("look"), spec.get("kind"))
+        editor = bool(user) and access.at_least(access.effective_role(conn, a, user["id"]), "editor")
+        full_spec = spec
+        spec = play.public_spec(spec, editor)              # quiz answers stay on the server until the reveal
         where, args = _mine_filter(user["id"] if user else None, guest_key)
         mine = conn.execute(f"SELECT * FROM submissions WHERE app_id = ? AND {where} ORDER BY id DESC", (a["id"], *args)).fetchall()
         many = spec.get("responses_per_person") == "many"
@@ -839,7 +1046,7 @@ def open_app(slug: str, request: Request):
             reason = "closed"
         elif state != "open":
             reason = state
-        elif mine and not many and not spec.get("allow_edit_after_submit", True):
+        elif mine and not many and (not spec.get("allow_edit_after_submit", True) or spec.get("quiz")):
             reason = "already"
         elif cap["left"] is not None and cap["left"] <= 0 and (many or not mine):
             reason = "full"
@@ -853,7 +1060,9 @@ def open_app(slug: str, request: Request):
                               "status_note": mine[0]["status_note"]} if mine and not many else None,
             "my_submissions": [{"id": m["id"], "data": json.loads(m["data"]), "created_at": m["created_at"], "status": m["status"],
                                 "status_note": m["status_note"]} for m in mine][:20] if many else [],
-            "results": summarize(spec, _all_data(conn, a["id"])) if _results_allowed(spec, role if role != "guest" else None, bool(mine)) else None,
+            "results": summarize(spec, _all_data(conn, a["id"])) if _results_allowed(spec, role if role != "guest" else None, bool(mine)) and not spec.get("quiz") else None,
+            "quiz": _quiz_result(conn, a, full_spec, json.loads(mine[0]["data"]), editor, mine[0]["id"]) if mine and not many and full_spec.get("quiz", {}).get("mode") == "self" else None,
+            "can_host": editor,
             "org": ORG_NAME, "mode": MODE,
             # questions their account answers (filled in and hidden on the page; filled on the server too)
             "auto": _auto_identity(spec, dict(user) if user else None),
@@ -862,6 +1071,19 @@ def open_app(slug: str, request: Request):
             "anonymous": bool(spec.get("anonymous")),
         }
         return out
+
+
+def _quiz_result(conn, a, spec, data, editor, sid):
+    """A self-paced quiz after playing: score, rank, the leaderboard and (if the owner allows) the right answers."""
+    pts, best, _ = play.score(spec, data)
+    q = spec["quiz"]
+    board = play.leaderboard(conn, a, spec, None)
+    mine = next((b for b in board if b["sid"] == sid), None)
+    reveal = editor or q["reveal"] == "after_submit" or (q["reveal"] == "end" and window_state(spec) == "closed")
+    return {"points": pts, "max": best, "rank": mine["rank"] if mine else None, "players": len(board),
+            "leaderboard": [{k: v for k, v in b.items() if k != "sid"} for b in board[:10]] if q["leaderboard"] or editor else None,
+            "review": play.review(spec, data) if reveal else None,
+            "reveal_later": q["reveal"] == "end" and not reveal}
 
 
 _NAME_Q = re.compile(r"\bname\b", re.I)
@@ -939,6 +1161,10 @@ async def submit(slug: str, request: Request):
             f"SELECT * FROM submissions WHERE app_id = ? AND {where} ORDER BY id DESC", (a["id"], *args)).fetchone()
         if existing and not spec.get("allow_edit_after_submit", True):
             raise HTTPException(400, "You have already responded.")
+        if (spec.get("quiz") or {}).get("mode") == "host" or spec.get("kind") == "party":
+            raise HTTPException(400, "This is a live game: join it from the app page.")
+        if existing and spec.get("quiz"):
+            raise HTTPException(400, "You've already played this quiz.")
         old = json.loads(existing["data"]) if existing else {}
 
         data, errors, uploads, file_errors = {}, [], [], []
@@ -1016,13 +1242,14 @@ async def submit(slug: str, request: Request):
                     os.remove(row["stored_path"])
                 except OSError:
                     pass
-        results = summarize(spec, _all_data(conn, a["id"])) if spec.get("show_results") in ("after_submit", "always") else None
+        results = summarize(spec, _all_data(conn, a["id"])) if spec.get("show_results") in ("after_submit", "always") and not spec.get("quiz") else None
+        quiz = _quiz_result(conn, a, spec, data, False, sub_id) if spec.get("quiz") else None
     monitor.bump("submissions")
     monitor.emit("submission", app_id=a["id"], title=a["title"], user=who if not spec.get("anonymous") else "Someone",
                  updated=bool(existing), files=[{"name": n, "size": len(c)} for _, n, c in uploads])
     if spec.get("ai_review", True) and any(f["type"] in ("file", "long_text") for f in spec["fields"]):
         agents.review_async(sub_id)      # only where there is something to read (not every poll vote)
-    return {"ok": True, "message": spec.get("confirmation_message"), "updated": bool(existing), "results": results,
+    return {"ok": True, "message": spec.get("confirmation_message"), "updated": bool(existing), "results": results, "quiz": quiz,
             "status": spec["statuses"][0] if spec.get("statuses") and not existing else None}
 
 

@@ -163,6 +163,8 @@ def init_db():
     os.makedirs(UPLOAD_DIR, exist_ok=True)
     with get_db() as conn:
         conn.executescript(SCHEMA)
+        from .play import init as play_init
+        play_init(conn)                       # quizzes, live games and party lights
         conn.execute("PRAGMA journal_mode = WAL")
         _migrate(conn)
         if conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0:

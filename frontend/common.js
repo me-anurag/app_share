@@ -4,7 +4,7 @@
 // ---------------------------------------------------------------- version (shown in the profile sheet and on sign-in)
 // One number for the whole phone app. sw.js uses "appshare-" + this; tests/test_live.py fails if they ever differ.
 // Bump it whenever anything in frontend/ changes, so phones pick the change up and people can see they have it.
-const APP_VERSION = "v17";
+const APP_VERSION = "v19";
 const APP_UPDATED = "26 Nov 2026";
 /** The first time a phone opens a new version, say so — then it's obvious an update really arrived. */
 window.addEventListener("load", () => {
@@ -72,7 +72,7 @@ const KIND = {
   assignment: { icon: "upload", label: "Submission" }, survey: { icon: "message", label: "Survey" }, feedback: { icon: "star", label: "Feedback" },
   poll: { icon: "chart", label: "Poll" }, registration: { icon: "users", label: "Registration" }, booking: { icon: "calendar", label: "Booking" },
   request: { icon: "ticket", label: "Request" }, rsvp: { icon: "users", label: "RSVP" }, quiz: { icon: "list", label: "Quiz" },
-  "sign-up": { icon: "pencil", label: "Sign-up" }, form: { icon: "file", label: "Form" },
+  "sign-up": { icon: "pencil", label: "Sign-up" }, site: { icon: "globe", label: "Site" }, party: { icon: "sparkle", label: "Party lights" }, form: { icon: "file", label: "Form" },
 };
 const kindOf = k => KIND[k] || KIND.form;
 const MODE_LABEL = { university: "University", office: "Office", general: "Personal" };

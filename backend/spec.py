@@ -22,7 +22,7 @@ LIMITABLE = {"select", "radio"}
 MAX_FILE_MB = 25
 DEFAULT_FILE_MB = 10
 DATETIME_FMT = "%Y-%m-%dT%H:%M"
-KINDS = {"assignment", "survey", "feedback", "poll", "registration", "booking", "request", "rsvp", "quiz", "form", "sign-up"}
+KINDS = {"assignment", "survey", "feedback", "poll", "registration", "booking", "request", "rsvp", "quiz", "form", "sign-up", "site", "party"}
 
 # Looks: a library of crafted designs the engine renders. The Design agent only picks names from it
 # (a few tokens), never writes HTML or CSS — cheap, consistent and safe on everyone's phone.
@@ -30,7 +30,7 @@ LOOK_STYLES = ("classic", "elegant", "festive", "playful", "bold", "minimal", "a
 LOOK_PATTERNS = ("none", "dots", "grid", "waves", "sparkle", "confetti", "leaves", "diagonal", "rings")
 STYLE_PATTERN = {"classic": "dots", "elegant": "sparkle", "festive": "confetti", "playful": "rings", "bold": "diagonal",
                  "minimal": "none", "academic": "grid", "corporate": "grid", "natural": "leaves"}
-KIND_STYLE = {"assignment": "academic", "quiz": "academic", "survey": "minimal", "feedback": "minimal", "poll": "playful",
+KIND_STYLE = {"assignment": "academic", "quiz": "playful", "party": "festive", "survey": "minimal", "feedback": "minimal", "poll": "playful",
               "registration": "bold", "booking": "corporate", "request": "corporate", "rsvp": "festive", "sign-up": "playful",
               "form": "classic"}
 COVER_RE = re.compile(r"cover-[0-9a-f]{8}\.(jpg|png|webp)")
@@ -146,7 +146,7 @@ def validate_spec(raw: dict, require_future_deadline: bool = True):
         errors.append("an anonymous app can't track request statuses (the owner couldn't tell anyone the outcome)")
 
     fields = raw.get("fields") or []
-    if not isinstance(fields, list) or not fields:
+    if not isinstance(fields, list) or (not fields and spec["kind"] not in ("site", "party")):   # a site may only show information
         errors.append("at least one field is required")
         fields = []
     seen = set()
@@ -208,6 +208,9 @@ def validate_spec(raw: dict, require_future_deadline: bool = True):
             except (TypeError, ValueError):
                 mb = DEFAULT_FILE_MB
             field["max_mb"] = max(0.1, min(mb, MAX_FILE_MB))
+        if ftype in CHOICE_TYPES and not errors_before(errors, label):
+            from .play import validate_question
+            validate_question(field, f, errors)            # quiz: the right answer and its points
         if ftype == "number":
             for k in ("min", "max"):
                 if isinstance(f.get(k), (int, float)):
@@ -218,7 +221,24 @@ def validate_spec(raw: dict, require_future_deadline: bool = True):
         errors.append("the app needs at least one input field (not only info blocks)")
     from .guard import forbidden_fields       # never collect passwords, card numbers, one-time codes or ID numbers
     errors.extend(forbidden_fields(spec["fields"]))
+    from .play import validate_party, validate_quiz
+    quiz = validate_quiz(raw.get("quiz"), spec, errors)
+    if quiz:
+        spec["quiz"] = quiz
+    if spec["kind"] == "party":
+        if spec["fields"]:
+            errors.append("a party light show has no questions (fields); people just open the link")
+        spec["party"] = validate_party(raw.get("party"), errors)
+    if spec["kind"] == "site":
+        from .site import validate_site
+        spec["site"], site_errors = validate_site(raw.get("site"), spec["title"], bool([f for f in spec["fields"] if f["type"] != "info"]))
+        errors.extend(site_errors)
     return spec, errors
+
+
+def errors_before(errors, label):
+    """True if this field already has a problem (no options), so its answer can't be checked yet."""
+    return any(f"field '{label}' (" in e for e in errors)
 
 
 def window_state(spec, now=None):

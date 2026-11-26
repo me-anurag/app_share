@@ -20,6 +20,8 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
+from .play import SCENES as PLAY_SCENES
+from .site import BACKGROUNDS as SITE_BACKGROUNDS, BLOCK_TYPES as SITE_BLOCKS, ICON_NAMES as SITE_ICONS, THEMES as SITE_THEMES, block_types_used, validate_block, validate_site
 from . import access, guard, limits, monitor, providers, trace
 
 
@@ -94,8 +96,16 @@ def threadsafe(fn):
 def describe_call(name, args):
     """Short, bounded, human-readable view of a tool call for the Control Center."""
     args = args or {}
-    if name in ("ask_data_agent", "ask_design_agent", "ask_access_agent"):
+    if name in ("ask_data_agent", "ask_design_agent", "ask_access_agent", "ask_site_agent"):
         return {"summary": _clip(args.get("brief"), 160), "to": name.split("_")[1]}
+    if name in ("check_site", "submit_site"):
+        site = args.get("site") or {}
+        pages = [p for p in site.get("pages") or [] if isinstance(p, dict)]
+        blocks = [b.get("type") for p in pages for b in p.get("blocks") or [] if isinstance(b, dict)]
+        return {"summary": f"{'check' if name == 'check_site' else 'deliver'} {len(pages)} page{'s' if len(pages) != 1 else ''} · {', '.join(blocks[:8])}",
+                "theme": site.get("theme"), "blocks": blocks[:20], "suggested": [s.get("type") for s in site.get("suggested") or [] if isinstance(s, dict)]}
+    if name == "submit_block":
+        return {"summary": f"write one {(args.get('block') or {}).get('type')} block"}
     if name == "search_people":
         return {"summary": f"search “{_clip(args.get('query'), 40)}”"}
     if name in ("check_fields", "submit_fields"):
@@ -156,6 +166,14 @@ def describe_result(name, out, is_error):
         return {"ok": True, "summary": f"“{_clip(out.get('title'), 50)}” · {out.get('theme_color')}",
                 "title": _clip(out.get("title"), 80), "theme_color": out.get("theme_color"),
                 "description": _clip(out.get("description"), 220)}
+    if name == "ask_site_agent":
+        site = out.get("site") or {}
+        blocks = [b.get("type") for p in site.get("pages") or [] for b in p.get("blocks") or [] if isinstance(b, dict)]
+        return {"ok": True, "summary": f"{site.get('theme')} theme · {len(site.get('pages') or [])} page(s) · {len(blocks)} blocks",
+                "items": blocks[:10]}
+    if name == "check_site":
+        p = out.get("problems") or []
+        return {"ok": not p, "summary": "site valid" if not p else f"{len(p)} problems", "problems": p[:6]}
     if name == "ask_access_agent":
         s = out.get("share_suggestions", [])
         return {"ok": True, "summary": ", ".join(f"{x.get('name')} ({x.get('role')})" for x in s) or "no audience named",
@@ -165,7 +183,7 @@ def describe_result(name, out, is_error):
         return {"ok": not p, "summary": "all fields valid" if not p else f"{len(p)} problems", "problems": p[:6]}
     if name == "check_color":
         return {"ok": out.get("readable"), "summary": f"contrast {out.get('contrast')}:1 — {'readable' if out.get('readable') else 'too light'}"}
-    if name in ("submit_fields", "submit_design", "submit_access"):
+    if name in ("submit_fields", "submit_design", "submit_access", "submit_site", "submit_block"):
         return {"ok": True, "summary": "handed back to the Builder"}
     if name == "get_fields":
         return {"ok": True, "summary": f"{len(out.get('fields', []))} fields received",
@@ -381,6 +399,8 @@ FIELD_SCHEMA = {
         "required": {"type": "boolean"},
         "options": {"type": "array", "items": {"type": "string"}, "description": "for select/radio/checkbox"},
         "accept": {"type": "array", "items": {"type": "string"}, "description": "file only, extensions like .pdf"},
+        "answer": {"description": "quiz questions only: the right option, exactly as written in options (a list for checkbox)"},
+        "points": {"type": "integer", "description": "quiz questions only: points for a right answer (default 1)"},
         "max_mb": {"type": "number", "description": "file only, max 25"},
         "min": {"type": "number"},
         "max": {"type": "number"},
@@ -398,6 +418,12 @@ RULE_PROPS = {
     "responses_per_person": {"type": "string", "enum": ["one", "many"], "description": "many for tickets, claims, requests"},
     "max_responses": {"type": "integer", "description": "total places, e.g. 60 seats; omit for unlimited"},
     "show_results": {"type": "string", "enum": ["never", "after_submit", "always"], "description": "polls: let people see the results"},
+    "quiz": {"type": "object", "description": "quizzes only (questions carry `answer`)", "properties": {
+        "mode": {"type": "string", "enum": ["self", "host"], "description": "self: everyone plays on their own phone at their own pace; "
+                 "host: a host runs it live on a big screen, one question at a time, fast right answers score more"},
+        "seconds": {"type": "integer", "description": "host mode: seconds per question (5-120, default 20)"},
+        "reveal": {"type": "string", "enum": ["after_submit", "end", "never"], "description": "self mode: when players see the right answers"},
+        "leaderboard": {"type": "boolean"}}},
     "statuses": {"type": "array", "items": {"type": "string"},
                  "description": "for requests/tickets/claims: 2-6 steps, first is the start, e.g. [Pending, Approved, Rejected]"},
 }
@@ -415,6 +441,10 @@ SPEC_SCHEMA = {
         **RULE_PROPS,
         "confirmation_message": {"type": "string"},
         "fields": {"type": "array", "items": FIELD_SCHEMA},
+        "party": {"type": "object", "description": "kind=party only (a party light show: every phone that opens the link becomes "
+                  "a light, all in sync; the host controls it from a host screen): {palette: [#hex up to 8], scenes: subset of "
+                  f"{list(PLAY_SCENES)}, scene, bpm 40-180, strobe: true ONLY if the person asked for strobe/flashing, message}}"},
+        "site": {"type": "object", "description": "kind=site only: {theme, background, footer, pages:[{title, blocks}]} — send the whole site when you change it; omit to keep it"},
     },
 }
 
@@ -460,6 +490,10 @@ requests/tickets/claims that move through statuses (with notifications), and sub
   select/radio can take `limits` (places per option) for slots or sessions.
 - Rules: closes_at (hard deadline, YYYY-MM-DDTHH:MM local time), allow_edit_after_submit, anonymous,
   responses_per_person (one | many), max_responses, show_results (never | after_submit | always), statuses.
+- Quizzes: choice questions with `answer` (the right option) and `points`; set quiz {{mode: self | host, seconds,
+  reveal, leaderboard}}. Players are scored on the server and see a live leaderboard. In host mode every question needs
+  an answer and players join with a nickname (don't add name fields).
+- Party lights (kind party): no questions — every phone that opens the link becomes a synced light the host controls.
 - Roles: submitter (fills it in), viewer (sees all responses), editor (changes it, shares it, updates statuses)."""
 
 
@@ -476,6 +510,10 @@ polls usually show results after voting; registrations and RSVPs often have a se
 per slot; requests, tickets, leave and claims use responses_per_person=many with statuses; assignments use files
 and a deadline. Keep it minimal: only the fields the brief needs, with clear snake_case ids and plain labels.
 Resolve relative dates from the current time in the message; a date with no time means 23:59.
+For a quiz, write the questions yourself when the brief gives a topic: as many as asked (default 8), 3-4 options
+each, exactly one right answer unless it says otherwise, facts the audience will know (keep them simple for children),
+no trick questions; mix where the right option sits. Set quiz.mode to host when it will be played together on a big
+screen (a party, a class, an event) and self when people play alone on their phones.
 Don't write instructions, wording polish or colours — the Design agent does that.
 Call check_fields to validate your draft, fix anything it reports, then call submit_fields."""
 
@@ -510,7 +548,7 @@ def run_data_agent(team, brief, parent, user_name):
         clean, problems = validate_spec(_rules_spec(fields, **rules))
         if problems:
             return {"error": "Not accepted — fix these and submit again.", "problems": problems}
-        result.update({k: clean[k] for k in RULE_KEYS}, fields=clean["fields"], notes=_clip(notes, 200), reason=_clip(reason, 400))
+        result.update({k: clean[k] for k in RULE_KEYS if k in clean}, fields=clean["fields"], notes=_clip(notes, 200), reason=_clip(reason, 400))
         return {"received": True}
 
     handlers = {"check_fields": check_fields, "submit_fields": submit_fields}
@@ -520,7 +558,7 @@ def run_data_agent(team, brief, parent, user_name):
     if not result:
         raise AgentError("The Data agent did not deliver any fields.")
     team["fields"] = result["fields"]
-    team["rules"] = {k: result[k] for k in RULE_KEYS}
+    team["rules"] = {k: result[k] for k in RULE_KEYS if k in result}
     return result
 
 
@@ -684,6 +722,138 @@ def run_access_agent(team, brief, parent, user_name):
     return result
 
 
+# --------------------------------------------------------------------------- Site agent
+
+SITE_SYSTEM = f"""You are the Site agent on AppShare's build team. When someone wants a site or a page — an event page,
+a club page, a fest, a notice, a landing page — you lay it out as pages of blocks. The platform renders it like a
+real website, in the theme you pick. You never write HTML or code.
+
+{PLATFORM_FACTS}
+
+Blocks: {"; ".join(f"{k} — {v}" for k, v in SITE_BLOCKS.items())}.
+Themes: {"; ".join(f"{k} — {v}" for k, v in SITE_THEMES.items())}.
+Backgrounds (for the hero): {", ".join(b for b in SITE_BACKGROUNDS if b != "photo")} (or none).
+
+Rules:
+- Build ONLY what the person asked for. A short request gets a short site: often a hero plus one or two blocks.
+  Do not add an FAQ, schedule, prizes, contact, menu pages or anything else they did not ask for.
+- Never invent facts: no made-up dates, places, prizes, names, emails or phone numbers. Use only what the brief says.
+- One page unless they asked for several pages or clearly separate sections they want as pages.
+- If the site collects answers (registration, RSVP, sign-up…), call get_fields and put one `form` block where it
+  makes sense; the hero button can link to "#form". If it collects nothing, use no form block.
+- Extras that would genuinely help go in `suggested` (type, a short label, why) — the owner switches them on if
+  they want them. Suggest at most 3, and none they already have.
+Call check_site with your draft, fix what it reports, then call submit_site."""
+
+_SITE_SHAPE = {"type": "object", "properties": {
+    "theme": {"type": "string", "enum": list(SITE_THEMES)},
+    "background": {"type": "string", "enum": list(SITE_BACKGROUNDS)},
+    "accent": {"type": "string", "description": "optional #rrggbb; leave empty to use the theme's"},
+    "footer": {"type": "string", "description": "optional footer line, only if asked or obvious (organiser name)"},
+    "pages": {"type": "array", "items": {"type": "object", "properties": {
+        "title": {"type": "string"},
+        "blocks": {"type": "array", "items": {"type": "object", "description": (
+            "{type, ...}. hero: title, subtitle, size(normal|full), align(center|left), button{label,to}. "
+            "text: heading, body. image_text: heading, body, side. cards: heading, items[{icon,title,body}]. "
+            "timeline: heading, items[{when,title,body}]. faq: heading, items[{q,a}]. countdown: to(YYYY-MM-DDTHH:MM), label. "
+            "buttons: items[{label,to}]. map: heading, place. contact: heading, email, phone, note. divider. form: heading."
+            f" Icons: {', '.join(SITE_ICONS)}.")}}},
+        "required": ["blocks"]}},
+    "suggested": {"type": "array", "items": {"type": "object", "properties": {
+        "type": {"type": "string"}, "label": {"type": "string"}, "why": {"type": "string"}}}}},
+    "required": ["theme", "pages"]}
+
+SITE_TOOLS = [
+    {"name": "get_fields",
+     "description": "The Data agent's fields (waits until they are ready). Empty if the site collects nothing.",
+     "input_schema": {"type": "object", "properties": {}}},
+    {"name": "check_site", "description": "Check a draft site with the platform's validator; returns the problems to fix.",
+     "input_schema": {"type": "object", "properties": {"site": _SITE_SHAPE}, "required": ["site"]}},
+    {"name": "submit_site", "description": "Hand the site back to the Builder. Ends your turn.",
+     "input_schema": {"type": "object", "properties": {
+         "site": _SITE_SHAPE,
+         "reason": REASON("Why these blocks and this theme — which part of the request each block answers.")},
+         "required": ["site", "reason"]}},
+]
+
+
+def _fields_ready(team, wait=True):
+    ready = team.get("data_ready")
+    if wait and ready is not None:
+        ready.wait(150)
+    return [f for f in team.get("fields") or [] if f.get("type") != "info"]
+
+
+def run_site_agent(team, brief, parent, user_name):
+    result = {}
+
+    def get_fields():
+        fields = _fields_ready(team)
+        return {"fields": [{"id": f["id"], "type": f["type"], "label": f.get("label")} for f in fields],
+                "note": "Place one form block for these." if fields else "This site collects nothing: use no form block."}
+
+    def _check(site):
+        clean, errors = validate_site(site, "Site", bool(_fields_ready(team, wait=False)))
+        return clean, errors
+
+    def check_site(site):
+        clean, errors = _check(site)
+        return {"ok": not errors, "problems": errors, "blocks": block_types_used(clean)}
+
+    def submit_site(site, reason=""):
+        clean, errors = _check(site)
+        if errors:
+            return {"error": "The site has problems. Fix them and submit again.", "problems": errors}
+        result.update(site=site, reason=_clip(reason, 400))
+        return {"received": True}
+
+    handlers = {"get_fields": get_fields, "check_site": check_site, "submit_site": submit_site}
+    _traced("site", user_name, brief, None, lambda run: run_loop(
+        SITE_SYSTEM, SITE_TOOLS, handlers, [], brief, run, SPECIALIST_MODEL, SPECIALIST_EFFORT,
+        terminal={"submit_site"}, max_steps=6), parent=parent)
+    if not result:
+        raise AgentError("The Site agent did not deliver a site.")
+    team["site"] = result["site"]
+    return result
+
+
+SITE_EXTRA_SYSTEM = """You write ONE block for a site the owner already has, because they switched on a suggested extra.
+Use only facts from the site and the owner's note; never invent dates, places, prizes, names, emails or phone numbers.
+Where a fact is missing, write a short placeholder in square brackets, e.g. [add the venue], so the owner can fill it in.
+Keep it short. Call submit_block once."""
+
+SITE_EXTRA_TOOLS = [{"name": "submit_block", "description": "The one block. Ends your turn.",
+                     "input_schema": {"type": "object", "properties": {
+                         "block": {"type": "object", "description": _SITE_SHAPE["properties"]["pages"]["items"]["properties"]["blocks"]["items"]["description"]},
+                         "reason": REASON("What this block says and where its content came from.")},
+                         "required": ["block", "reason"]}}]
+
+
+def write_site_extra(site, title, block_type, note, user_name, has_fields):
+    """One small, cheap model call: fill in a single suggested block. Returns the clean block (marked extra)."""
+    out = {}
+
+    def submit_block(block, reason=""):
+        block = dict(block or {}, type=block_type, extra=True)
+        errors = []
+        clean = validate_block(block, errors, "block", has_fields)
+        if errors:
+            return {"error": "Fix these and submit again.", "problems": errors}
+        out["block"] = clean
+        return {"received": True}
+
+    summary = {"title": title, "theme": site.get("theme"),
+               "blocks": [b for p in site.get("pages", []) for b in p.get("blocks", []) if b.get("type") != "form"]}
+    brief = (f"Site so far: {json.dumps(summary, ensure_ascii=False)[:5000]}\n\nWrite a `{block_type}` block."
+             + (f" The owner's note: {note}" if note else ""))
+    _traced("site", user_name, brief, title, lambda run: run_loop(
+        SITE_EXTRA_SYSTEM, SITE_EXTRA_TOOLS, {"submit_block": submit_block}, [], brief, run, SPECIALIST_MODEL,
+        SPECIALIST_EFFORT, terminal={"submit_block"}, max_steps=3))
+    if not out:
+        raise AgentError("The Site agent could not write that block.")
+    return out["block"]
+
+
 # --------------------------------------------------------------------------- Builder (coordinator)
 
 BUILDER_SYSTEM = f"""You are the Builder, the lead agent of AppShare's build team. This is {_WORKSPACE}
@@ -697,6 +867,14 @@ Your team:
 - Design agent: designs how it reads and looks — title, instructions, wording, field order, colour. It works from
   the Data agent's fields.
 - Access agent: finds the real groups and people the app is for and proposes their roles.
+- Quizzes: the Data agent writes the questions and right answers. Tell it the topic, how many questions, who plays
+  (age), and whether it is played together on a big screen (host mode) or alone on phones (self mode).
+- Party lights (phones as synced lights, a party screen): no team needed — save it yourself with kind "party", no
+  fields, and a `party` setting (colours that suit the occasion, scenes; strobe only if asked). The owner runs it
+  from the Host screen.
+- Site agent: ONLY when the person wants a site or page (event page, fest site, club page, notice, landing page):
+  lays it out as pages of blocks in a theme. Call it together with the others. If the site collects nothing
+  (just information), skip the Data agent. The site has exactly what they asked for — never ask it for extras.
 
 For a new app or a substantial redesign: write one clear brief with everything the user said (resolve relative
 dates from the current time given in each message; a date alone means 23:59) and call ask_data_agent,
@@ -721,6 +899,8 @@ BUILDER_TOOLS = [
      "input_schema": {"type": "object", "properties": {"brief": {"type": "string"}}, "required": ["brief"]}},
     {"name": "ask_access_agent", "description": "Give the Access agent the brief; it returns who should get the app and with which role.",
      "input_schema": {"type": "object", "properties": {"brief": {"type": "string"}}, "required": ["brief"]}},
+    {"name": "ask_site_agent", "description": "Only for a site or page: give the Site agent the brief; it returns pages of blocks and a theme.",
+     "input_schema": {"type": "object", "properties": {"brief": {"type": "string"}}, "required": ["brief"]}},
     {"name": "get_current_app", "description": "The spec, status and current shares of the app this conversation is editing, if any.",
      "input_schema": {"type": "object", "properties": {}}},
     {"name": "save_app",
@@ -733,6 +913,14 @@ BUILDER_TOOLS = [
          "reason": REASON("What this save does and why: the team's draft as is, or what you changed or fixed and why.")},
          "required": ["reason"]}},
 ]
+
+
+def _site_title(site):
+    for p in (site or {}).get("pages") or []:
+        for b in p.get("blocks") or []:
+            if isinstance(b, dict) and b.get("type") == "hero" and b.get("title"):
+                return b["title"]
+    return None
 
 
 def _assemble(team, override):
@@ -751,6 +939,10 @@ def _assemble(team, override):
     spec = {"title": design.get("title"), "description": design.get("description"), "kind": design.get("kind"),
             "theme_color": design.get("theme_color"), "confirmation_message": design.get("confirmation_message"),
             "look": design.get("look"), "fields": fields, **team.get("rules", {})}
+    if (team.get("rules") or {}).get("quiz"):  # questions with right answers make this a quiz
+        spec["kind"] = "quiz"
+    if team.get("site"):                       # the Site agent's layout makes this a site
+        spec.update(kind="site", site=team["site"], title=design.get("title") or _site_title(team["site"]))
     spec = {k: v for k, v in spec.items() if v not in (None, "")}
     spec.update({k: v for k, v in (override or {}).items() if v not in (None, "", [])})
     return spec
@@ -785,7 +977,7 @@ def builder_handlers(conn, user, session):
 
     def save_app(spec=None, share_suggestions=None, use_team_draft=False, reason=""):
         if use_team_draft:
-            if not team.get("fields") and not (spec or {}).get("fields"):
+            if not team.get("fields") and not team.get("site") and not (spec or {}).get("fields"):
                 return {"error": "There is no team draft yet. Ask the specialists first, or send a complete spec."}
             spec = _assemble(team, spec)
             if share_suggestions is None:
@@ -801,6 +993,10 @@ def builder_handlers(conn, user, session):
             spec["look"] = new_look
             if not spec.get("theme_color") and old.get("theme_color"):
                 spec["theme_color"] = old["theme_color"]
+            if old.get("kind") == "site" and not spec.get("site"):    # an edit that doesn't touch the layout keeps it
+                spec.setdefault("kind", "site")
+                if spec["kind"] == "site":
+                    spec["site"] = old.get("site")
         clean, errors = validate_spec(spec)
         if errors:
             return {"error": "Validator: spec not saved. Fix these and call save_app again.", "problems": errors}
@@ -851,7 +1047,7 @@ def builder_handlers(conn, user, session):
         return result
 
     return {"ask_data_agent": _ask(run_data_agent, "Data"), "ask_design_agent": _ask(run_design_agent, "Design"),
-            "ask_access_agent": _ask(run_access_agent, "Access"),
+            "ask_access_agent": _ask(run_access_agent, "Access"), "ask_site_agent": _ask(run_site_agent, "Site"),
             "get_current_app": get_current_app, "save_app": save_app}
 
 

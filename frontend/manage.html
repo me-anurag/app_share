@@ -13,6 +13,7 @@
   <title>Manage · AppShare</title>
   <link rel="stylesheet" href="/static/style.css">
   <link rel="stylesheet" href="/static/looks.css">
+  <link rel="stylesheet" href="/static/site.css">
 </head>
 <body data-install>
   <main class="shell" id="root"><div class="empty">Loading…</div></main>
@@ -39,7 +40,7 @@
         <div class="meta">${esc(meta)}${(A.rules || []).length ? `<br><span class="muted">${A.rules.map(esc).join(" · ")}</span>` : ""}</div>
         <div class="acts">
           ${A.can_edit ? `<button class="btn primary" id="hShare">${ic("users")}${A.status === "draft" ? "Share" : "Sharing"}</button>` : `<button class="btn" id="hSend">${ic("send")}Send link</button>`}
-          <a class="btn" href="/a/${A.slug}?preview=1">${ic("eye")}Open</a>
+          ${A.can_edit && (s.kind === "party" || s.quiz?.mode === "host") ? `<a class="btn" href="/a/${A.slug}/host">${ic("star")}Host screen</a>` : `<a class="btn" href="/a/${A.slug}?preview=1">${ic("eye")}Open</a>`}
           <button class="btn" id="hMore" aria-label="More">${ic("dots")}</button></div>
       </div>`;
     }
@@ -367,7 +368,72 @@
     function customize() {
       $("pane").innerHTML = `<div id="lookPane"></div>
         <div class="sec"><div class="sec-t"><h2>Change anything else</h2></div><div id="editPane"></div></div>`;
-      look(); edit();
+      A.spec.kind === "site" && A.spec.site ? siteLook() : look(); edit();
+    }
+
+    const SITE_THEMES = [["clean", "Clean", "Fits anything"], ["editorial", "Editorial", "Notices, clubs"], ["bold", "Bold", "Events, launches"],
+      ["warm", "Warm", "Parties, community"], ["night", "Night", "Gaming, music"], ["fresh", "Fresh", "Outdoors, health"],
+      ["academic", "Academic", "Courses, seminars"], ["playful", "Playful", "Kids, games, fun"]];
+    const SITE_BGS = ["none", "sunrise", "ocean", "forest", "dusk", "berry", "mint", "paper", "night", "photo"];
+    const EXTRA_INFO = { faq: "Questions & answers", timeline: "Schedule", countdown: "Countdown", contact: "Contact",
+      map: "Location", cards: "Highlights", text: "About", buttons: "Link buttons", image_text: "Picture with text" };
+
+    /** A site's look, by hand and free: theme, hero background, footer, badge. Extras the AI suggested are switches —
+        off by default; switching one on writes just that block (one small AI call), switching it off removes it. */
+    function siteLook() {
+      const s = A.spec, S = s.site, L = s.look || {};
+      const used = new Set(S.pages.flatMap(p => p.blocks.filter(b => b.extra).map(b => b.type)));
+      const blocks = S.pages.map(p => `${S.pages.length > 1 ? `<b>${esc(p.title)}</b>: ` : ""}${p.blocks.map(b => esc(b.type === "form" ? "your form" : b.type.replace("_", " "))).join(" · ")}`);
+      const box = $("lookPane") || $("pane");
+      box.innerHTML = `
+        <div class="sec"><div class="card pad row" style="gap:10px;flex-wrap:wrap">
+          <div class="grow" style="min-width:0"><b>Your site</b><div class="muted small" style="margin-top:4px">${blocks.join("<br>")}</div></div>
+          <a class="btn" href="/a/${esc(A.slug)}" target="_blank">${ic("eye")}Open</a></div>
+          <p class="muted tiny" style="margin-top:8px">${ic("check")} Theme, background and footer save instantly and use no AI.</p></div>
+        <div class="sec"><div class="sec-t"><h2>Theme</h2></div>
+          <div class="site-themes">${SITE_THEMES.map(([id, name, blurb]) => `<button class="site-tile ${S.theme === id ? "on" : ""}" data-theme-id="${id}">
+            <div class="site" data-theme="${id}"><div class="st-hero" data-bg="${S.background === "none" ? "paper" : esc(S.background)}"><i></i><i></i></div>
+              <div class="st-body"><i></i><i></i><span></span></div></div><b>${name}</b><span>${blurb}</span></button>`).join("")}</div></div>
+        <div class="sec"><div class="sec-t"><h2>Banner background</h2></div>
+          <div class="bg-row">${SITE_BGS.map(b => `<button class="bg-sw ${S.background === b ? "on" : ""}" data-bg-id="${b}" data-bg="${b}" title="${b}"
+            ${b === "photo" && L.cover ? `style="background-image:url('/api/a/${encodeURIComponent(A.slug)}/cover?v=${encodeURIComponent(L.cover)}');background-size:cover"` : ""}>
+            ${b === "none" ? "None" : b === "photo" ? (L.cover ? "" : "Photo") : ""}</button>`).join("")}</div>
+          <div class="row" style="gap:10px;margin-top:10px;flex-wrap:wrap">
+            <label class="btn sm">${ic("upload")}${L.cover ? "Replace photo" : "Upload a photo"}<input type="file" id="stCover" accept="image/jpeg,image/png,image/webp" hidden></label>
+            <span class="muted tiny grow">The photo shows in the banner when “photo” is picked.</span></div></div>
+        ${S.suggested?.length ? `<div class="sec"><div class="sec-t"><h2>Extras</h2><span class="n">off unless you want them</span></div>
+          <div class="card list">${S.suggested.map(x => `<label class="extra-row"><span class="grow" style="min-width:0"><b>${esc(x.label || EXTRA_INFO[x.type] || x.type)}</b>
+            ${x.why ? `<span class="muted small">${esc(x.why)}</span>` : ""}</span>
+            <span class="switch"><input type="checkbox" data-extra="${esc(x.type)}" ${used.has(x.type) ? "checked" : ""}><i></i></span></label>`).join("")}</div>
+          <p class="muted tiny" style="margin-top:8px">Switching one on asks the Site agent to write just that section from what the site already says — about a cent. Missing facts come back as [placeholders] for you to fill in.</p></div>` : ""}
+        <div class="sec"><div class="sec-t"><h2>Footer</h2><span class="n">optional</span></div>
+          <div class="card pad" style="display:grid;gap:10px">
+            <input class="input" id="stFooter" maxlength="200" placeholder="e.g. Riverside CS Society · Dec 2026" value="${esc(S.footer || "")}">
+            <label class="row" style="gap:8px"><input type="checkbox" id="stBadge" ${S.show_badge ? "checked" : ""}><span class="small">Show “Made with AppShare”</span></label></div></div>`;
+      const save = async patch => {
+        try { const r = await api(`/api/apps/${appId}/site/look`, { json: patch }); A.spec.site = r.site; siteLook(); toast("Saved"); }
+        catch (e) { toast(e.message); }
+      };
+      box.querySelectorAll("[data-theme-id]").forEach(b => b.onclick = () => save({ theme: b.dataset.themeId }));
+      box.querySelectorAll("[data-bg-id]").forEach(b => b.onclick = () => save({ background: b.dataset.bgId }));
+      $("stFooter").onchange = e => save({ footer: e.target.value });
+      $("stBadge").onchange = e => save({ show_badge: e.target.checked });
+      $("stCover").onchange = async e => {
+        const f = e.target.files[0];
+        if (!f) return;
+        const fd = new FormData(); fd.append("file", f);
+        try { const r = await api(`/api/apps/${appId}/cover`, { method: "POST", body: fd }); A.spec.look = r.look; await save({ background: "photo" }); }
+        catch (err) { toast(err.message); }
+      };
+      box.querySelectorAll("[data-extra]").forEach(inp => inp.onchange = async () => {
+        inp.disabled = true;
+        const row = inp.closest(".extra-row");
+        row.classList.add("busy");
+        try {
+          const r = await api(`/api/apps/${appId}/site/extra`, { json: { type: inp.dataset.extra, on: inp.checked } });
+          A.spec.site = r.site; siteLook(); toast(inp.checked ? "Added to your site" : "Removed");
+        } catch (e) { inp.checked = !inp.checked; inp.disabled = false; row.classList.remove("busy"); toast(e.message); }
+      });
     }
 
     function look() {

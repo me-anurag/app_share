@@ -13,10 +13,14 @@
   <title>AppShare</title>
   <link rel="stylesheet" href="/static/style.css">
   <link rel="stylesheet" href="/static/looks.css">
+  <link rel="stylesheet" href="/static/site.css">
+  <link rel="stylesheet" href="/static/play.css">
 </head>
 <body>
   <main class="shell" id="root" style="padding-bottom:28px;position:relative"><div class="empty">Loading…</div></main>
   <script src="/static/common.js"></script>
+  <script src="/static/site.js"></script>
+  <script src="/static/play.js"></script>
   <script>
     // The generic renderer: turns any app spec into a working page. No per-app code exists.
     const slug = location.pathname.split("/").pop();
@@ -59,6 +63,20 @@
         return `<div class="q"><span class="ql">${esc(q.label)}</span><div class="row" style="margin-top:6px"><span class="bigstat">${q.average}</span><span class="muted small">average · ${q.answered} answers</span></div></div>`;
       });
       return parts.length ? `<div class="section"><div class="section-head"><h2>Results so far</h2></div><div class="card">${parts.join("")}</div></div>` : "";
+    }
+
+    /** A self-paced quiz after playing: score, rank, right answers (if the owner reveals them) and the leaderboard. */
+    function quizHtml(Q) {
+      if (!Q) return "";
+      return `<div class="card qz-score" style="margin-top:14px"><div class="muted small">Your score</div>
+          <div class="big-n">${Q.points}<span class="of"> / ${Q.max}</span></div>
+          ${Q.rank ? `<div style="margin-top:6px"><b>#${Q.rank}</b> <span class="muted">of ${Q.players} player${Q.players === 1 ? "" : "s"}</span></div>` : ""}</div>
+        ${Q.review ? `<div class="section"><div class="section-head"><h2>Answers</h2></div><div class="card pad"><div class="qz-list" style="margin-top:0">${Q.review.map(r => `<div class="qz-item">
+            <span class="mk ${r.right ? "y" : "n"}">${ic(r.right ? "check" : "x")}</span><div class="grow"><b>${esc(r.label)}</b>
+            <div class="small muted">${r.right ? `Your answer: ${esc([].concat(r.yours ?? "—").join(", "))}` : `You said ${esc([].concat(r.yours ?? "nothing").join(", "))} · answer: <b>${esc([].concat(r.answer).join(", "))}</b>`}</div></div>
+            <span class="small muted">${r.right ? "+" + r.points : 0}</span></div>`).join("")}</div></div></div>`
+          : Q.reveal_later ? `<p class="muted small" style="margin:10px 2px">The right answers are shown when the quiz closes.</p>` : ""}
+        ${Q.leaderboard ? `<div class="section"><div class="section-head"><h2>Leaderboard</h2></div><div class="card pad"><ol class="qz-lb">${Q.leaderboard.map(p => `<li><span class="r">${p.rank}</span><b>${esc(p.name)}</b><span>${p.points}</span></li>`).join("")}</ol></div></div>` : ""}`;
     }
 
     function fieldHtml(f, prev, cap) {
@@ -104,8 +122,18 @@
     }
 
     /** The app wears its own look: style + pattern (+ cover photo) from the spec, rendered by looks.css. */
+    const isSite = () => D.spec.kind === "site" && D.spec.site;
+    const SITE_BG = { night: "#0f1117", warm: "#fff8ef", playful: "#fffafc" };
     function applyLook() {
       const s = D.spec, look = s.look || {};
+      if (isSite()) {                                  // a site wears its own theme (site.css), not an app look
+        document.body.className = "site-body";
+        const bg = SITE_BG[s.site.theme] || "#ffffff";
+        document.body.style.background = bg;
+        document.querySelector('meta[name="theme-color"]').content = bg;
+        root.className = "site-root";
+        return;
+      }
       document.body.className = `lk lk-${look.style || "classic"}`;
       document.body.style.setProperty("--tc", s.theme_color || "#c4471a");
       document.querySelector('meta[name="theme-color"]').content = ["festive", "bold"].includes(look.style) ? (look.style === "bold" ? "#141414" : s.theme_color) : getComputedStyle(document.body).getPropertyValue("--bg").trim() || "#ffffff";
@@ -142,6 +170,7 @@
       const blockedMsg = { draft: "Preview — this is a draft. Share it to start collecting responses.", closed: "This app is closed.",
         not_open: `Opens ${fmtDate(s.opens_at)}.`, full: "It's full — there are no places left.", already: "You've already responded." }[D.blocked];
       const mineSub = D.my_submission;
+      if (isSite()) return renderSite(flash, { inputs, AUTO, mine, blockedMsg, mineSub });
       root.innerHTML = `
         ${heroHtml()}
         ${flash || ""}
@@ -160,6 +189,7 @@
         ${mineSub && !many ? `<div class="notice ok" style="margin-top:12px">${ic("check")}<span>You responded ${esc(timeAgo(mineSub.updated_at))}.${D.can_submit ? " You can change your answers below." : ""}</span></div>` : ""}
         ${mineSub?.status ? `<div class="card pad" style="margin-top:10px"><div class="row"><b class="grow">Status</b>${statusTag(mineSub.status, s.statuses)}</div>${track(mineSub.status, s.statuses)}</div>` : ""}
         ${D.results ? resultsHtml(D.results, mineSub?.data) : ""}
+        ${D.quiz ? quizHtml(D.quiz) : ""}
         ${D.can_submit || D.blocked === "draft" ? `
           <div class="section"><div class="section-head"><h2>${many && D.my_submissions.length ? "New request" : mineSub ? "Your answers" : "Your answers"}</h2><span class="muted small">${inputs.filter(f => f.required).length ? "* required" : ""}</span></div>
           ${Object.keys(AUTO).length ? `<div class="as-line">${ic("user")}<span>Answering as <b>${esc(Object.values(AUTO).find(v => !String(v).includes("@")) || Object.values(AUTO)[0])}</b> — from your account</span></div>` : ""}
@@ -167,13 +197,18 @@
             ? `<input type="hidden" name="${esc(f.id)}" value="${esc(AUTO[f.id])}">`
             : fieldHtml(f, many ? null : mineSub?.data, D.capacity)).join("")}</form></div>
           <div id="formMsg"></div>
-          <div class="submit-bar"><div class="prog"><small id="progT"></small><div class="meter"><i id="progB" style="width:0"></i></div></div>
-            <button class="btn primary" id="go" ${D.blocked === "draft" ? "disabled" : ""}>${mineSub && !many ? "Update" : "Submit"}</button></div>` : ""}
+          ${submitHtml(inputs, mineSub && !many ? "Update" : "Submit")}` : ""}
         ${footHtml()}`;
 
+      wireForm(inputs);
+    }
+
+    /** The form's live parts: progress, unsaved-answers guard, file names, submit. Same for apps and sites. */
+    function wireForm(inputs) {
       const form = document.getElementById("form");
       if (!form) return;
       const prog = () => {
+        if (!document.getElementById("progT")) return;      // nothing left to fill in: no progress bar
         const done = inputs.filter(f => answered(form, f)).length;
         document.getElementById("progT").textContent = `${done} of ${inputs.length} answered`;
         document.getElementById("progB").style.width = (inputs.length ? done / inputs.length * 100 : 100) + "%";
@@ -190,6 +225,45 @@
         lab.querySelector(".di").innerHTML = ic("check");
       }));
       document.getElementById("go").onclick = () => submit(form);
+    }
+
+    /** A site: the creator's own pages and blocks; the app's questions sit where the "form" block is. */
+    function renderSite(flash, { inputs, AUTO, mine, blockedMsg, mineSub }) {
+      const s = D.spec, many = D.many, open = D.can_submit || D.blocked === "draft";
+      const top = `${flash || ""}
+        ${mine ? `<div class="creator-note">${ic("eye")}<span><b>${D.role === "owner" ? "You made this site." : "You can edit this site."}</b> This is what people see.</span>
+          <a class="btn sm" href="/manage/${D.id}">${ic("grid")}Manage</a></div>` : ""}
+        ${blockedMsg && (inputs.length || D.blocked === "draft") ? `<div class="notice ${D.blocked === "draft" ? "warn" : "bad"}">${ic("lock")}<span>${esc(blockedMsg)}</span></div>` : ""}`;
+      const form = !inputs.length && !s.fields.some(f => f.id in AUTO) ? "" : `
+        ${open && (D.anonymous || D.ai_review) ? `<div class="privacy-note">
+          ${D.anonymous ? `<div>${ic("eyeoff")}<span><b>Anonymous.</b> ${esc(D.owner || "The owner")} sees your answers but never who sent them.</span></div>` : ""}
+          ${D.ai_review ? `<div>${ic("sparkle")}<span><b>An AI assistant reads your answers</b> to help ${esc(D.owner || "the owner")} check them. A person makes every decision.</span></div>` : ""}</div>` : ""}
+        ${mineSub && !many ? `<div class="notice ok" style="margin-bottom:12px">${ic("check")}<span>You responded ${esc(timeAgo(mineSub.updated_at))}.${D.can_submit ? " You can change your answers below." : ""}</span></div>` : ""}
+        ${mineSub?.status ? `<div class="card pad" style="margin-bottom:12px"><div class="row"><b class="grow">Status</b>${statusTag(mineSub.status, s.statuses)}</div>${track(mineSub.status, s.statuses)}</div>` : ""}
+        ${open ? `${Object.keys(AUTO).length ? `<div class="as-line">${ic("user")}<span>Answering as <b>${esc(Object.values(AUTO).find(v => !String(v).includes("@")) || Object.values(AUTO)[0])}</b> — from your account</span></div>` : ""}
+          <form id="form" class="card" novalidate>${s.fields.map(f => f.id in AUTO
+            ? `<input type="hidden" name="${esc(f.id)}" value="${esc(AUTO[f.id])}">`
+            : fieldHtml(f, many ? null : mineSub?.data, D.capacity)).join("")}</form>
+          <div id="formMsg"></div>
+          ${submitHtml(inputs, mineSub && !many ? "Update" : "Submit")}`
+          : blockedMsg ? `<div class="notice bad">${ic("lock")}<span>${esc(blockedMsg)}</span></div>` : ""}
+        ${D.results ? resultsHtml(D.results, mineSub?.data) : ""}`;
+      root.innerHTML = siteHtml(top, form);
+      Site.wire(root, () => render());
+      wireForm(inputs);
+    }
+    function siteHtml(top, form) {
+      return Site.render(D, { top: top.trim() ? `<div class="s-top">${top}</div>` : "", form,
+        bottom: D.guest ? `<a href="/login?next=${encodeURIComponent(location.pathname)}">Sign in</a>` : `<a href="/">Back to AppShare</a>` });
+    }
+
+    /** The submit bar. When the account already answers every question (name, email), there is nothing to fill in:
+        no "0 of 0 answered" bar — just one clear button under "Answering as …". */
+    function submitHtml(inputs, label) {
+      const off = D.blocked === "draft" ? "disabled" : "";
+      if (!inputs.length) return `<div class="one-tap"><button class="btn primary" id="go" ${off}>${ic("check")}${label === "Submit" ? (D.spec.kind === "site" || /sign|regist|rsvp/i.test(D.spec.kind) ? "Sign me up" : "Send") : label}</button></div>`;
+      return `<div class="submit-bar"><div class="prog"><small id="progT"></small><div class="meter"><i id="progB" style="width:0"></i></div></div>
+            <button class="btn primary" id="go" ${off}>${label}</button></div>`;
     }
 
     async function submit(form) {
@@ -212,6 +286,24 @@
         const res = await api(`/api/a/${slug}/submit`, { method: "POST", body: new FormData(form), allow401: D.guest });
         const mine = Object.fromEntries([...new FormData(form).keys()].map(k => [k, new FormData(form).getAll(k).length > 1 ? new FormData(form).getAll(k) : new FormData(form).get(k)]));
         D = await api(`/api/a/${slug}`, { allow401: true });
+        if (res.quiz) {                                 // a quiz: show the score, not a plain "Sent"
+          root.innerHTML = `${heroHtml(true)}${quizHtml(res.quiz)}${footHtml()}`;
+          onDone = true; scrollTo(0, 0);
+          return;
+        }
+        if (isSite()) {                                 // a site keeps its pages; the thank-you sits where the form was
+          root.innerHTML = siteHtml("", `<div class="card done-card"><div class="big">${ic("check")}</div><h2>${res.updated ? "Updated" : "Sent"}</h2>
+              <p class="muted" style="margin-top:6px">${esc(res.message)}</p>
+              ${res.status ? `<div style="margin-top:14px">${statusTag(res.status, D.spec.statuses)}</div>` : ""}
+              ${D.can_submit ? `<button class="btn" id="again" style="margin-top:14px">${D.many ? ic("plus") + "Send another" : ic("pencil") + "Change answers"}</button>` : ""}</div>
+            ${resultsHtml(res.results, mine)}`);
+          Site.wire(root, () => render());
+          onDone = true;
+          const again = document.getElementById("again");
+          if (again) again.onclick = () => { render(); root.querySelector(".s-form")?.scrollIntoView(); };
+          root.querySelector(".s-form")?.scrollIntoView({ block: "start" });
+          return;
+        }
         root.innerHTML = `${heroHtml(true)}<div class="card done-card" style="margin-top:14px"><div class="big">${ic("check")}</div><h2>${res.updated ? "Updated" : "Sent"}</h2>
             <p class="muted" style="margin-top:6px">${esc(res.message)}</p>
             ${res.status ? `<div style="margin-top:14px">${statusTag(res.status, D.spec.statuses)}<p class="muted small" style="margin-top:6px">You'll get a notification when it changes.</p></div>` : ""}
@@ -236,6 +328,19 @@
         if (e.status === 401) { location.href = "/login?next=" + encodeURIComponent(location.pathname); return; }
         guestBar();
         root.innerHTML = `<div class="card empty" style="margin-top:20px">${ic("lock")}<b>Can't open this app</b><p style="margin-top:6px">${esc(e.message)}. Ask the person who shared it to add you.</p></div>`;
+        return;
+      }
+      if (D.spec.kind === "party" || D.spec.quiz?.mode === "host") {
+        if (D.can_host && !new URLSearchParams(location.search).has("play")) {
+          root.innerHTML = `<div class="pl-wrap"><div class="pl-card pl-center"><div class="pl-kicker">${ic(D.spec.kind === "party" ? "sparkle" : "star")}${D.spec.kind === "party" ? "Party lights" : "Live quiz"}</div>
+              <h1>${esc(D.spec.title)}</h1><p class="pl-note">You run this one. Open the host screen on a TV, laptop or projector; everyone else opens the link on their phone.</p>
+              <a class="pl-go" style="display:grid;place-items:center;text-decoration:none;margin-top:16px" href="/a/${slug}/host">Open the host screen</a>
+              <a class="btn" style="margin-top:10px;width:100%" href="?play=1">Join as a player on this phone</a>
+              <a class="btn" style="margin-top:10px;width:100%" href="/manage/${D.id}">${ic("grid")}Manage</a></div></div>`;
+          document.body.className = "pl-body"; root.className = "pl-root";
+          return;
+        }
+        Play.start(D, root);                          // phones: join, play, or become a light
         return;
       }
       applyLook();      // the app is the page: its own design, no AppShare top bar

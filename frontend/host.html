@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#111015">
+  <title>Host screen · AppShare</title>
+  <link rel="icon" href="/static/icons/icon-192.png">
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/play.css">
+</head>
+<body class="pl-body host-body">
+  <main id="root" class="hs"><div class="hs-empty">Loading…</div></main>
+  <script src="/static/common.js"></script>
+  <script src="/static/play.js"></script>
+  <script>
+    // The host screen: put it on a TV or projector. People join from the QR code; the host moves the game on here.
+    const slug = location.pathname.split("/")[2];
+    const root = document.getElementById("root");
+    let A, L, offset = 0, stopLight = null, tick = null, autoRevealed = -1, joinUrl = "";
+
+    async function control(body) {
+      try { await api(`/api/apps/${A.id}/live`, { json: body }); await load(); }
+      catch (e) { toast(e.message); }
+    }
+
+    async function load() {
+      L = await liveFetch(`/api/a/${slug}/live?host=1`); offset = L.offset;
+      if (!userIsBusy()) draw();
+    }
+
+    const qr = () => `<div class="hs-join"><img src="/api/qr?data=${encodeURIComponent(joinUrl)}" alt="QR code to join"><div><span>Join at</span><b>${esc(joinUrl.replace(/^https?:\/\//, ""))}</b></div></div>`;
+
+    function draw() {
+      if (!L.host) { root.innerHTML = `<div class="hs-empty">Only the people who can edit this app can run its host screen.</div>`; return; }
+      A.spec.kind === "party" ? party() : quiz();
+    }
+
+    // ------------------------------------------------------------------ party
+    function party() {
+      const P = L.party, S = L.scenes, pal = L.palette;
+      const sceneName = { solid: "Solid", pulse: "Pulse", chase: "Chase", wave: "Wave", rainbow: "Rainbow", sparkle: "Sparkle", strobe: "Strobe" };
+      if (!document.getElementById("stage")) {
+        root.innerHTML = `<div class="hs-party">
+            <div class="hs-stage" id="stage"><div class="hs-over"><h1>${esc(A.spec.title)}</h1><p id="pmsg"></p>${qr()}<div class="hs-count" id="pcount"></div></div></div>
+            <aside class="hs-panel" id="panel"></aside></div>`;
+        stopLight = Light.run(document.getElementById("stage"), () => ({ state: L.party, seat: 0, offset }));
+      }
+      document.getElementById("pmsg").textContent = P.message || "";
+      document.getElementById("pcount").textContent = `${L.present} phone${L.present === 1 ? "" : "s"} lit up`;
+      document.getElementById("panel").innerHTML = `
+        <div class="hs-row"><b>Lights</b><button class="hs-btn ${P.on === false ? "" : "on"}" data-on="${P.on === false ? 1 : 0}">${P.on === false ? "Turn on" : "On"}</button></div>
+        <div class="hs-label">Effect</div><div class="hs-chips">${S.map(s => `<button class="hs-chip ${P.scene === s ? "on" : ""}" data-scene="${s}">${sceneName[s] || s}</button>`).join("")}</div>
+        <div class="hs-label">Colours <span>tap to add or remove</span></div>
+        <div class="hs-sw">${pal.map(c => `<button style="background:${c}" class="${P.colors.includes(c) ? "on" : ""}" data-col="${c}" aria-label="${c}"></button>`).join("")}
+          <label class="hs-custom" title="Any colour"><input type="color" id="anyCol" value="#ffffff">+</label></div>
+        <div class="hs-label">Speed <span id="bpmv">${P.bpm} beats a minute</span></div>
+        <div class="hs-row"><input type="range" id="bpm" min="40" max="180" value="${P.bpm}"><button class="hs-btn" id="tap">Tap beat</button></div>
+        <div class="hs-label">Message on the big screen</div>
+        <form id="msgF" class="hs-row"><input class="input" id="msg" maxlength="80" value="${esc(P.message || "")}" placeholder="e.g. Happy birthday Riya!"><button class="hs-btn">Show</button></form>
+        <div class="hs-row hs-foot"><button class="hs-btn" id="full">Full screen</button><a class="hs-btn" href="/manage/${A.id}">Manage</a></div>
+        ${S.includes("strobe") ? `<p class="hs-tiny">Strobe flashes at most 3 times a second. Warn guests with photosensitive epilepsy.</p>` : ""}`;
+      root.querySelectorAll("[data-scene]").forEach(b => b.onclick = () => control({ action: "party", scene: b.dataset.scene }));
+      root.querySelectorAll("[data-col]").forEach(b => b.onclick = () => {
+        const c = b.dataset.col, cur = P.colors.includes(c) ? P.colors.filter(x => x !== c) : [...P.colors, c];
+        if (cur.length) control({ action: "party", colors: cur.slice(-6) });
+      });
+      document.getElementById("anyCol").onchange = e => control({ action: "party", colors: [...P.colors, e.target.value].slice(-6) });
+      root.querySelector("[data-on]").onclick = e => control({ action: "party", on: e.currentTarget.dataset.on === "1" });
+      const bpm = document.getElementById("bpm");
+      bpm.oninput = () => document.getElementById("bpmv").textContent = `${bpm.value} beats a minute`;
+      bpm.onchange = () => control({ action: "party", bpm: +bpm.value });
+      let taps = [];
+      document.getElementById("tap").onclick = () => {
+        const t = Date.now(); taps = taps.filter(x => t - x < 3000).concat(t);
+        if (taps.length >= 4) {
+          const gaps = taps.slice(1).map((x, i) => x - taps[i]), avg = gaps.reduce((a, b) => a + b) / gaps.length;
+          control({ action: "party", bpm: Math.max(40, Math.min(180, Math.round(60000 / avg))) }); taps = [];
+        }
+      };
+      document.getElementById("msgF").onsubmit = e => { e.preventDefault(); document.activeElement.blur(); control({ action: "party", message: document.getElementById("msg").value }); };
+      document.getElementById("full").onclick = () => document.getElementById("stage").requestFullscreen?.();
+    }
+
+    // ------------------------------------------------------------------ quiz
+    function quiz() {
+      const ph = L.phase, q = L.question;
+      let main = "", acts = "";
+      if (ph === "lobby") {
+        main = `<div class="hs-lobby"><h1>${esc(A.spec.title)}</h1>${qr()}
+            <div class="hs-count">${(L.players || []).length} player${(L.players || []).length === 1 ? "" : "s"} joined</div>
+            <div class="pl-names big">${(L.players || []).map(n => `<span>${esc(n)}</span>`).join("")}</div></div>`;
+        acts = `<button class="hs-btn primary" data-a="start" ${(L.players || []).length ? "" : "disabled"}>Start the quiz</button>`;
+      } else if (ph === "question" || ph === "reveal") {
+        const left = Math.max(0, (L.ends_at || 0) - (Date.now() + offset)), max = Math.max(1, ...Object.values(L.counts || { x: 1 }));
+        main = `<div class="hs-q"><div class="hs-qn">Question ${L.q + 1} of ${L.total}</div><h1>${esc(q.label)}</h1>
+            ${ph === "question" ? `<div class="hs-clock" id="clock">${Math.ceil(left / 1000)}</div>` : ""}
+            <div class="hs-opts n${q.options.length}">${q.options.map((o, i) => {
+              const right = ph === "reveal" && [].concat(L.answer).includes(o), n = (L.counts || {})[o] || 0;
+              return `<div class="hs-opt c${i % 6} ${ph === "reveal" ? (right ? "right" : "wrong") : ""}"><span class="sh">${SHAPES[i % 6]}</span><span class="t">${esc(o)}</span>
+                ${ph === "reveal" ? `<span class="n">${n}</span><i style="width:${n / max * 100}%"></i>` : ""}</div>`;
+            }).join("")}</div>
+            <div class="hs-count">${L.answered} of ${L.joined} answered</div></div>`;
+        acts = ph === "question" ? `<button class="hs-btn primary" data-a="reveal">Show the answer</button>`
+          : `<button class="hs-btn" data-a="board">Leaderboard</button><button class="hs-btn primary" data-a="next">${L.q + 1 < L.total ? "Next question" : "Final scores"}</button>`;
+      } else if (ph === "board") {
+        main = `<div class="hs-board"><h1>Leaderboard</h1><ol>${(L.leaderboard || []).map(p => `<li><b>${esc(p.name)}</b><span>${p.points}</span></li>`).join("")}</ol></div>`;
+        acts = `<button class="hs-btn primary" data-a="next">${L.q + 1 < L.total ? "Next question" : "Final scores"}</button>`;
+      } else if (ph === "end") {
+        const top = (L.leaderboard || []).slice(0, 3);
+        main = `<div class="hs-board"><h1>Winners</h1><div class="pl-podium big">${top.map((p, i) => `<div class="p${i + 1}"><b>${esc(p.name)}</b><span>${p.points}</span><i>${i + 1}</i></div>`).join("")}</div>
+            <ol start="4">${(L.leaderboard || []).slice(3, 10).map(p => `<li><b>${esc(p.name)}</b><span>${p.points}</span></li>`).join("")}</ol></div>`;
+        acts = `<button class="hs-btn" data-a="reset">Play again</button>`;
+      }
+      root.innerHTML = `<div class="hs-quiz">${main}<div class="hs-acts">${acts}${ph !== "lobby" && ph !== "end" ? `<button class="hs-btn ghost" data-a="end">End quiz</button>` : ""}
+        <a class="hs-btn ghost" href="/manage/${A.id}">Manage</a></div>
+        ${ph === "question" && L.answer_for_host ? `<div class="hs-tiny">Only you see this · answer: ${esc([].concat(L.answer_for_host).join(", "))}</div>` : ""}</div>`;
+      root.querySelectorAll("[data-a]").forEach(b => b.onclick = () => {
+        if (b.dataset.a === "reset" && !confirmReset()) return;
+        control({ action: b.dataset.a });
+      });
+      clearInterval(tick);
+      if (ph === "question") {
+        tick = setInterval(() => {
+          const left = Math.max(0, L.ends_at - (Date.now() + offset)), el = document.getElementById("clock");
+          if (el) el.textContent = Math.ceil(left / 1000);
+          const everyone = L.answered > 0 && L.answered >= L.joined;
+          if ((left <= 0 || everyone) && autoRevealed !== L.q) { autoRevealed = L.q; clearInterval(tick); control({ action: "reveal" }); }
+        }, 250);
+      }
+    }
+    function confirmReset() { return root.querySelector(".hs-board") !== null; }   // only offered on the final screen
+
+    (async () => {
+      const D = await api(`/api/a/${slug}`, { allow401: false });
+      A = { id: D.id, spec: D.spec };
+      document.title = `${D.spec.title} · Host screen`;
+      let base = location.origin;
+      try { base = (await api("/api/workspace")).share_base || base; } catch { /* use this address */ }
+      joinUrl = `${base}/a/${slug}`;
+      if (!D.can_host) { root.innerHTML = `<div class="hs-empty">Only the people who can edit this app can run its host screen.</div>`; return; }
+      await load();
+      Live.on(load);
+      setInterval(() => { if (!document.hidden) load(); }, 3000);
+    })().catch(e => { root.innerHTML = `<div class="hs-empty">${esc(e.message)}</div>`; });
+  </script>
+</body>
+</html>
