@@ -1,6 +1,6 @@
 # AppShare — Evaluation guide
 
-**Evaluation, Safety and Deployment of LLM and Agentic Systems — what was measured, what every term means, how each value is calculated, and what is still to do.**  Generated 27 November 2026, 00:16 by `python -m evals.eval_guide`.
+**Evaluation, Safety and Deployment of LLM and Agentic Systems — what was measured, what every term means, how each value is calculated, and what is still to do.**  Generated 27 November 2026, 01:06 by `python -m evals.eval_guide`.
 
 > Every number in this guide is read from a measured result file in `data/evals/` (or the price table in `backend/trace.py`). None is typed by hand. Results from the harness self-test (a scripted stand-in model) are labelled as such and are never presented as agent quality. Costs are **calculated** (measured tokens × published prices), not taken from a bill.
 
@@ -25,7 +25,7 @@
 | Share of input tokens served from the prompt cache | 57% |
 | Injection scanner on attacks it was never tuned on | 2/12 detected · 1/8 false alarms |
 | Simultaneous app builds that failed (16 at once) | before the fix 13 → after 0 |
-| Offline test suites (one command) | 13 suites · 261 checks · all pass |
+| Offline test suites (one command) | 14 suites · 310 checks · all pass |
 | Total calculated cost of the live quality evaluation | $1.2054 |
 | Site builds measured live | 1 (small sample — live (imported)) |
 | Site builds with blocks nobody asked for | 0/1 |
@@ -33,12 +33,16 @@
 | Site build — time / calculated cost | 22.6 s / $0.0545 |
 | Site agent's own cost per build | $0.0009 (1.6% of the build) |
 | Invented facts (checked by hand) | Checked by hand: date, time and place match the request. One addition — 'Riverside University' after 'Workshop B', taken from the workspace's name, not from the request. No prizes, names, emails or phone numbers invented. |
+| Assistant: the right card, or none when it must ask, refuse or lacks the rights | 9/9 tasks · 45/45 checks (live) |
+| Assistant actions that changed anything before the person's Confirm | 0/9 |
+| Assistant: calculated cost of all 9 tasks | $0.0071 |
+| Assistant: the first live run, as scored then | 8/9 — the one failure was the checker reading a quoted note (“Swap done.”) as a claim; corrected. That run also showed replays need fixed link codes, now used. |
 
-Sources: quality — `data/evals/20261127-001329-replay` (replay of the live run `data/evals/20261125-182325-live`); load — `data/evals/20261125-224203-load`; held-out — `data/evals/heldout.json`; tests — `data/evals/tests.json`; sites — `data/evals/20261126-113540-site-live`.
+Sources: quality — `data/evals/20261127-003324-replay` (replay of the live run `data/evals/20261125-182325-live`); load — `data/evals/20261125-224203-load`; held-out — `data/evals/heldout.json`; tests — `data/evals/tests.json`; sites — `data/evals/20261126-113540-site-live`.
 
 ## 2. How the evaluation works
 
-**What is evaluated.** AppShare's eight Claude agents: the **Builder** (lead; Claude Opus) coordinates **Data**, **Design**, **Access** and, for sites, **Site** (specialists; Claude Haiku) to turn a request into an app spec; **Insights** answers questions about responses; **Review** reads each submission and flags problems; **Reminder** nudges people who haven't responded. The agents never write code: they fill in a JSON spec, and a plain-code **Validator** checks it before it is saved.
+**What is evaluated.** AppShare's nine Claude agents: the **Builder** (lead; Claude Opus) coordinates **Data**, **Design**, **Access** and, for sites, **Site** (specialists; Claude Haiku) to turn a request into an app spec; **Insights** answers questions about responses; **Review** reads each submission and flags problems; **Reminder** nudges people who haven't responded; the **Assistant** works for one person across the app and only ever prepares actions that the person confirms. The agents never write code: they fill in a JSON spec, and a plain-code **Validator** checks it before it is saved.
 
 **The tasks.** 12 realistic tasks across the three workspaces (university, office, general): 9 app builds at three complexity levels, two Insights questions and one Reminder run. Each build task comes with a **reworded version** of the same request and a hand-written **reference answer**.
 
@@ -159,10 +163,10 @@ By agent: access 93% · builder 61% · data 85% · design 81%.
 | Anonymity | For anonymous apps, no name, email, exact time or file name reaches the owner, the CSV, any agent or the trace store. | end-to-end tests | tested: pass |
 | Data minimisation | Agents get only what their job needs; no email address is ever sent to the AI (people are referred to as `u12`). | every message of all agents captured and checked | tested: pass |
 | Human decision | A Review flag is shown with its evidence as *an AI flag, not a decision*; only an editor can confirm or dismiss it, recorded with their name. | — | tested: pass |
-| False-flag rate | Honest work wrongly flagged by the Review agent — the harm that matters most, because flags affect real students. | flagged honest submissions ÷ honest submissions | real model: not yet measured |
-| Detection rate | Empty, off-topic or copied work that the Review agent flagged. | flagged bad submissions ÷ bad submissions | real model: not yet measured |
-| Precision | How many flags were right. | correct flags ÷ all flags | real model: not yet measured |
-| Counterfactual fairness | The same file submitted under different students' names gets the same verdict. | files with one verdict for all names ÷ files | real model: not yet measured |
+| False-flag rate | Honest work wrongly flagged by the Review agent — the harm that matters most, because flags affect real students. | flagged honest submissions ÷ honest submissions | **33.3%** (1/3; 95% CI 6–79%) |
+| Detection rate | Empty, off-topic or copied work that the Review agent flagged. | flagged bad submissions ÷ bad submissions | **100.0%** (4/4; 95% CI 51–100%) |
+| Precision | How many flags were right. | correct flags ÷ all flags | **80.0%** (4/5; 95% CI 38–96%) |
+| Counterfactual fairness | The same file submitted under different students' names gets the same verdict. | files with one verdict for all names ÷ files | **100.0%** (2/2; 95% CI 34–100%) |
 
 ### 3.9 Serving, monitoring and deployment
 
@@ -175,7 +179,7 @@ By agent: access 93% · builder 61% · data 85% · design 81%.
 | Daily AI budget | Calculated AI spend allowed per day; checked before any model call. | Σ cost of today's steps (trace store) | default $3.00 (configurable) |
 | Rate limit | AI requests one person may make per hour. | sliding one-hour window per person | default 30 (configurable) |
 | Alert | Shown on the Monitor: budget at 80%/100%, ≥3 failed agent runs in an hour, ≥5 server errors, people over the hourly limit. | computed live | — |
-| Regression gate | All offline test suites in one command; must pass before a change is trusted. | `python -m tests.run_all` | 261 checks |
+| Regression gate | All offline test suites in one command; must pass before a change is trusted. | `python -m tests.run_all` | 310 checks |
 
 ## 4. Results and checklists by chapter topic
 
@@ -236,7 +240,7 @@ Source: `data/evals/20261125-185603-safety-fake` — **harness self-test with a 
 
 ### 4.4 Ethical considerations and Responsible AI
 
-Review agent — harness self-test (scripted reviewer that passes everything): false-flag rate **0.0%** (0/3; 95% CI 0–56%); detection **0.0%** (0/4; 95% CI 0–49%); same verdict across names **100.0%** (2/2; 95% CI 34–100%).
+Review agent — live: false-flag rate **33.3%** (1/3; 95% CI 6–79%); detection **100.0%** (4/4; 95% CI 51–100%); same verdict across names **100.0%** (2/2; 95% CI 34–100%).
 
 |  | Checklist |
 |---|---|
@@ -260,9 +264,10 @@ Review agent — harness self-test (scripted reviewer that passes everything): f
 | test_creator | The account answers 'your name / email' for signed-in people; creator recognised | pass · 7 |
 | test_sites | Sites: only what was asked; theme free; extras only when switched on | pass · 24 |
 | test_play | Quizzes and party lights: scoring, live games, no answer leaks, host-only controls | pass · 35 |
+| test_assistant | The Assistant reads freely and prepares; nothing happens until the person confirms | pass · 45 |
 | test_proof | The proof tools: fingerprints catch edits, reproduce catches changes, examiner tasks fail when wrong | pass · 17 |
 | test_limits | Cost budget, rate limits, alerts | pass · 11 |
-| test_ui_smoke | Phone app and Control Center pages load without script errors | pass · 4 |
+| test_ui_smoke | Phone app and Control Center pages load without script errors | pass · 8 |
 | test_live | Open screens update by themselves within 2 s; files compressed and cached | pass · 8 |
 
 |  | Checklist |

@@ -1,19 +1,20 @@
 # AppShare — system card and evaluation report
 
-Generated 2026-11-27 00:16 by `python -m evals.system_card` from the result files in `data/evals/`.
+Generated 2026-11-27 01:06 by `python -m evals.system_card` from the result files in `data/evals/`.
 Every number below is read from a measured result; nothing is typed by hand. Costs are **calculated** from measured
 token counts × published per-token prices, not taken from a bill.
 
 ## The system
 
 AppShare lets people create small apps (forms, polls, registrations, bookings, requests, submissions) by describing them.
-Eight Claude agents work as a team — Builder (lead), Data, Design, Access, Site, Insights, Review, Reminder — but they never
+Nine Claude agents work as a team — Builder (lead), Data, Design, Access, Site, Insights, Review, Reminder, and the person's own
+Assistant (it prepares actions; only the person's Confirm runs them) — but they never
 write code: they fill in a JSON spec that a fixed engine runs, and a plain-code **Validator** checks every spec before
 it is saved. Models: Builder/Insights `claude-opus-5-5`, specialists `claude-haiku-5-5`.
 
 ## 1. Metrics for evaluating the agents
 
-Source: `data\evals\20261127-001329-replay` — 12 realistic tasks across three workspaces, run live once (every reply recorded in `data\evals\20261125-182325-live`) and re-scored by replay. Checks are exact (fields, rules, dates, places, groups, roles; Insights/Reminder against the database's true answer).
+Source: `data\evals\20261127-003324-replay` — 12 realistic tasks across three workspaces, run live once (every reply recorded in `data\evals\20261125-182325-live`) and re-scored by replay. Checks are exact (fields, rules, dates, places, groups, roles; Insights/Reminder against the database's true answer).
 
 | Measure | Result |
 |---|---|
@@ -90,16 +91,26 @@ see "How this app was built" on their phone; Review flags carry the AI's evidenc
   that only a person makes decisions; anonymous apps remind them not to put their name in answers, files or file names.
 - **Disclosure:** `docs/DATA_FLOW.md` states exactly what each agent sends to the API.
 
-Review agent (HARNESS SELF-TEST — scripted reviewer that passes everything, `data\evals\20261125-224250-review-fake`):
+Review agent (LIVE (real Review agent), `data\evals\20261127-002019-review-live`):
 
 | Measure | Result |
 |---|---|
-| Honest work wrongly flagged | **0.0%** (0/3, 95% CI 0–56%) |
-| Bad work caught (empty, off-topic, copied) | **0.0%** (0/4, 95% CI 0–49%) |
-| Flags that were right (precision) | NOT YET MEASURED |
+| Honest work wrongly flagged | **33.3%** (1/3, 95% CI 6–79%) |
+| Bad work caught (empty, off-topic, copied) | **100.0%** (4/4, 95% CI 51–100%) |
+| Flags that were right (precision) | **80.0%** (4/5, 95% CI 38–96%) |
 | Same verdict for the same file under different students' names | **100.0%** (2/2, 95% CI 34–100%) |
 
-**Review accuracy and name-fairness with the real model are NOT YET MEASURED** (`python -m evals.review_eval --mode live --yes`, ≈ $0.05).
+### The Assistant (works for one person; prepares, the person confirms)
+
+9 tasks across its four phases (read · answer for the person · owner actions · automations), each in a fresh workspace,
+scored with exact checks on the card it returned and on the database before and after the turn.
+
+| Measure | Value |
+|---|---|
+| Assistant: the right card, or none when it must ask, refuse or lacks the rights | 9/9 tasks · 45/45 checks (live) |
+| Assistant actions that changed anything before the person's Confirm | 0/9 |
+| Assistant: calculated cost of all 9 tasks | $0.0071 |
+| Assistant: the first live run, as scored then | 8/9 — the one failure was the checker reading a quoted note (“Swap done.”) as a claim; corrected. That run also showed replays need fixed link codes, now used. |
 
 ### Sites (Site agent)
 
@@ -127,12 +138,13 @@ Source: `data\evals\20261126-113540-site-live`. Scored automatically: blocks the
 | test_creator | The account answers 'your name / email' for signed-in people; creator recognised | pass · 7 checks |
 | test_sites | Sites: only what was asked; theme free; extras only when switched on | pass · 24 checks |
 | test_play | Quizzes and party lights: scoring, live games, no answer leaks, host-only controls | pass · 35 checks |
+| test_assistant | The Assistant reads freely and prepares; nothing happens until the person confirms | pass · 45 checks |
 | test_proof | The proof tools: fingerprints catch edits, reproduce catches changes, examiner tasks fail when wrong | pass · 17 checks |
 | test_limits | Cost budget, rate limits, alerts | pass · 11 checks |
-| test_ui_smoke | Phone app and Control Center pages load without script errors | pass · 4 checks |
+| test_ui_smoke | Phone app and Control Center pages load without script errors | pass · 8 checks |
 | test_live | Open screens update by themselves within 2 s; files compressed and cached | pass · 8 checks |
 
-One command, no API key: `python -m tests.run_all` — 261 checks, last run 2026-11-27 00:16:19.
+One command, no API key: `python -m tests.run_all` — 310 checks, last run 2026-11-27 01:01:13.
 
 Also: the evaluation harness tests itself (a deliberately broken run must be caught), and a recorded live run is
 replayed without an API key to reproduce the results exactly.

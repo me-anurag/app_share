@@ -20,6 +20,17 @@ What any app can do (the agents choose these from your description): anonymous a
 per person, a total cap and per-option places (slots), results shown never / after answering / always, a status
 workflow with notifications to the requester, open and close dates, file uploads with type and size checks.
 
+Beyond forms:
+
+- **Sites**: pages of blocks (hero, text, cards, schedule, FAQ, live countdown, map, contact, buttons, the form) in
+  eight themes. The Site agent builds only what was asked; extras are suggestions the owner switches on.
+- **Quizzes**: scored on the server with a live leaderboard, played alone, or **host-led** on a TV (players join
+  with a nickname from a QR code, a timer per question, faster right answers score more, a podium at the end).
+- **Party lights**: every phone that opens the link becomes a light; the host picks effects and colours on a
+  host screen and all phones stay in sync. Strobe is off unless asked and capped at 3 flashes per second.
+- **The Assistant**: each person's own agent. It reads, and prepares actions as cards; only the person's
+  **Confirm** runs them (see below).
+
 ## How it works
 
 ```
@@ -51,6 +62,15 @@ fast to create and reliable.
 | **Insights** | The owner asks a question | Answers questions about responses | `get_overview`, `list_responses`, `list_missing` |
 | **Review** | After every submission (background) | Reads the file and answers, flags empty / wrong / copied work for the owner | `get_assignment`, `read_submission`, `compare_with_others`, `submit_review` |
 | **Reminder** | 24 h and 2 h before a deadline, or **Remind now** | Reminds only the people who haven't submitted (in-app notification) | `get_overview`, `list_missing`, `send_reminders` |
+| **Site** | Asked by the Builder for a site | Lays the site out as pages of blocks in a theme — only what was asked | `get_fields`, `check_site`, `submit_site` |
+| **Assistant** | The person asks (Home → **Ask the Assistant**) | Works for one person across everything they can see: reads, and **prepares** actions as cards; nothing happens until they press Confirm | `my_overview`, `open_app`, `list_requests`, `ask_about_my_app`, `list_automations`, `prepare_*` (answers, status change, reminder, deadline, close/reopen, edit through the Builder, automation on/off) |
+
+**The Assistant never acts by itself.** Every action tool only prepares a card showing exactly what will happen
+(which app, which answers, which people, which date). The server performs it only when the person presses **Confirm**,
+and checks everything again then: rights, places left, whether the date is valid, who still hasn't answered. It uses
+the person's own permissions; other people's text reaches it as fenced data; it won't answer quizzes or attach files.
+Automations it helps set up (reminders on a schedule, a summary, a note at N responses) run as plain code with limits,
+stop when the app closes, and are listed with on/off switches.
 
 Data and Access work in parallel; Design starts as soon as Data's fields are ready. The specialists run on a
 faster model (`APPSHARE_SPECIALIST_MODEL`, default `claude-haiku-5-5`); the Builder and Insights use
@@ -140,7 +160,9 @@ After changing files in `frontend/`, bump `VERSION` in `frontend/sw.js` so insta
 
 | Path | What it does |
 |---|---|
-| `backend/agents.py` | All seven agents: prompts, tools, the shared tool loop (parallel hand-offs), review/reminder runs |
+| `backend/agents.py` | The build team, Insights, Review and Reminder: prompts, tools, the shared tool loop (parallel hand-offs) |
+| `backend/assistant.py` | The Assistant: its tools, cards, Confirm, and the automations scheduler |
+| `backend/site.py` · `backend/play.py` | Sites (blocks, themes) · quizzes, live host mode and party lights |
 | `backend/filetext.py` | Reads PDF / DOCX text and detects copied files for the Review agent |
 | `backend/spec.py` | App spec validation, deadline window, server-side file and answer checks |
 | `backend/access.py` | Effective role resolution (user, group, org link), audience |
@@ -151,7 +173,7 @@ After changing files in `frontend/`, bump `VERSION` in `frontend/sw.js` so insta
 | `backend/monitor.py` | Live monitor: requests, devices, agent steps, streamed to the Control Center |
 | `frontend/` | Phone-first PWA: Home / Create / Inbox (`index.html`), the app renderer people answer (`app.html`), the owner page with Summary, Responses, Ask and Edit (`manage.html`) |
 | `launcher/control.py` | Control Center backend: start/stop the server, logs, addresses, QR codes, https tunnel (Tailscale / cloudflared / ngrok) |
-| `launcher/ui/` | Control Center screens: `live.js`, `monitor.js`, `theater.js`, rehearsal data in `sim.js` |
+| `launcher/ui/` | Control Center screens: `live.js`, `monitor.js`, `theater.js`, `flow.js` (each agent's from / input / did / output / to), `evaluation.js`, rehearsal data in `sim.js` |
 
 Data lives in `data/<workspace>/` (SQLite file and uploads). **Reset demo data** in the Control Center
 recreates the current workspace.
@@ -175,8 +197,18 @@ python -m evals.safety --mode fake | live --yes    # prompt-injection and chat a
 python -m evals.review_eval --mode fake | live --yes   # Review agent accuracy + fairness across names (live ≈ $0.05)
 python -m evals.heldout                            # the injection scanner on attacks it was never tuned on
 python -m evals.load                               # load and concurrency test (free: stand-in model)
+python -m evals.site_eval | play_eval | assistant_eval --live --yes   # sites, quizzes + party, the Assistant (cents)
+python -m evals.examiner --job job.json --yes      # an examiner's own request, marked by the same checks (≈ $0.05)
+python -m evals.proof --seal --check               # SHA-256 fingerprints of every result file (evals/SEALS.json)
 python -m evals.system_card                        # writes docs/SYSTEM_CARD.md from the measured results
+python -m evals.eval_guide                         # writes docs/EVALUATION_GUIDE.md / .pdf
 ```
+
+The Control Center's **Evaluation** tab (key 5) shows every number from the eight chapter topics with its sample, 95%
+interval and how it was obtained (live / replayed / measured / self-test / not measured), and the evidence behind
+it. Four buttons re-check the numbers on the spot: **Reproduce** (re-score the recorded live run, free), the
+**scoring audit** (both scorings of the live run and every change between them), **fingerprints**, and the
+**self-test**; **Test it yourself** lets an examiner set a task for the real agents.
 
 Reports land in `data/evals/<time>-<mode>/` (`report.html`, `report.md`, `results.json`, `cassettes/`).
 `docs/SYSTEM_CARD.md` is the evaluation report (generated, no hand-typed numbers); `docs/DATA_FLOW.md` lists exactly
