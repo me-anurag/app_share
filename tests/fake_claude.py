@@ -55,6 +55,8 @@ class FakeClaude:
             agents_module.REVIEW_SYSTEM: "review", agents_module.REMINDER_SYSTEM: "reminder",
             agents_module.SITE_SYSTEM: "site", agents_module.SITE_EXTRA_SYSTEM: "site",
         }
+        from backend import assistant
+        self._systems[assistant.SYSTEM] = "assistant"
 
     def agent_of(self, system):
         if system in self._systems:

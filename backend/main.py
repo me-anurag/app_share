@@ -1348,20 +1348,31 @@ def set_response_status(app_id: int, sid: int, body: RespStatusIn, user=Depends(
     with get_db() as conn:
         a = load_app(conn, app_id)
         require(conn, a, user, "editor")
-        spec = json.loads(a["spec"])
-        if body.status not in (spec.get("statuses") or []):
-            raise HTTPException(400, f"Status must be one of: {', '.join(spec.get('statuses') or [])}")
-        s = conn.execute("SELECT * FROM submissions WHERE id = ? AND app_id = ?", (sid, app_id)).fetchone()
-        if not s:
-            raise HTTPException(404, "Response not found")
-        conn.execute("UPDATE submissions SET status = ?, status_note = ?, updated_at = datetime('now','localtime') WHERE id = ?",
-                     (body.status, body.note.strip()[:300] or None, sid))
-        if s["user_id"]:
-            conn.execute("INSERT INTO notifications (user_id, app_id, kind, title, body) VALUES (?, ?, 'status', ?, ?)",
-                         (s["user_id"], app_id, f"{a['title']}: {body.status}",
-                          (body.note.strip() or f"{user['name']} marked your request as {body.status}.")[:300]))
-        monitor.emit("status_changed", app_id=app_id, title=a["title"], user=user["name"], status=body.status)
+        try:
+            _set_response_status(conn, a, user, sid, body.status, body.note)
+        except LookupError as e:
+            raise HTTPException(404, str(e))
+        except ValueError as e:
+            raise HTTPException(400, str(e))
     return {"ok": True}
+
+
+def _set_response_status(conn, a, user, sid, status, note=""):
+    """One rule for moving a request along, used by the owner's button and by the Assistant (after Confirm)."""
+    spec = json.loads(a["spec"])
+    if status not in (spec.get("statuses") or []):
+        raise ValueError(f"Status must be one of: {', '.join(spec.get('statuses') or [])}")
+    s = conn.execute("SELECT * FROM submissions WHERE id = ? AND app_id = ?", (sid, a["id"])).fetchone()
+    if not s:
+        raise LookupError("Response not found")
+    note = (note or "").strip()
+    conn.execute("UPDATE submissions SET status = ?, status_note = ?, updated_at = datetime('now','localtime') WHERE id = ?",
+                 (status, note[:300] or None, sid))
+    if s["user_id"]:
+        conn.execute("INSERT INTO notifications (user_id, app_id, kind, title, body) VALUES (?, ?, 'status', ?, ?)",
+                     (s["user_id"], a["id"], f"{a['title']}: {status}", (note or f"{user['name']} marked your request as {status}.")[:300]))
+    monitor.emit("status_changed", app_id=a["id"], title=a["title"], user=user["name"], status=status)
+    return s
 
 
 class DecisionIn(BaseModel):
@@ -1491,6 +1502,9 @@ def _reminder_scheduler():
 
 
 _reminder_scheduler()
+if not os.environ.get("APPSHARE_NO_SCHEDULERS"):
+    from . import assistant as _assistant
+    _assistant.start_scheduler()       # the person's automations (no AI involved when they run)
 
 
 # --------------------------------------------------------------------------- agents
@@ -1562,6 +1576,164 @@ def agent_insights(body: AgentIn, user=Depends(current_user)):
             agents.store_session(conn, session)
             reply, error = None, str(e)
     return {"session_id": session["id"], "reply": reply, "error": error}
+
+
+# --------------------------------------------------------------------------- answering for the person (the Assistant)
+
+def _save_answers(conn, a, user, values, dry_run=False):
+    """Answer an app as `user`, with exactly the rules of the form (access, window, places, every question's check).
+    dry_run=True only checks and returns the preview the person will confirm; it writes nothing.
+    Files can't be attached here (they stay as they are, or the person uploads them in the app). Raises ValueError."""
+    spec = json.loads(a["spec"])
+    if not (a["link_access"] == "public" and a["status"] != "draft"):
+        role = access.effective_role(conn, a, user["id"])
+        if not access.at_least(role, "submitter"):
+            raise ValueError("You don't have access to answer this app.")
+    if a["status"] == "draft":
+        raise ValueError("This app is still a draft.")
+    if a["status"] == "closed":
+        raise ValueError("This app is closed.")
+    state = window_state(spec)
+    if state != "open":
+        raise ValueError("The deadline has passed." if state == "closed" else "This app isn't open yet.")
+    if spec.get("kind") == "party" or spec.get("quiz"):
+        raise ValueError("Quizzes and live games are played by the person themselves.")
+    many = spec.get("responses_per_person") == "many"
+    where, args = _mine_filter(user["id"], None)
+    existing = None if many else conn.execute(f"SELECT * FROM submissions WHERE app_id = ? AND {where} ORDER BY id DESC",
+                                              (a["id"], *args)).fetchone()
+    if existing and not spec.get("allow_edit_after_submit", True):
+        raise ValueError("You've already answered and this app doesn't allow changes.")
+    old = json.loads(existing["data"]) if existing else {}
+    auto = _auto_identity(spec, dict(user))
+    values = {str(k): v for k, v in (values or {}).items()}
+    unknown = [k for k in values if k not in {f["id"] for f in spec["fields"]}]
+    data, errors, preview = {}, [], []
+    if unknown:
+        errors.append(f"These aren't questions in this app: {', '.join(unknown[:5])}")
+    for f in spec["fields"]:
+        if f["type"] == "info":
+            continue
+        if f["type"] == "file":
+            if f["id"] in old:
+                data[f["id"]] = old[f["id"]]
+                preview.append({"question": f["label"], "answer": f"{old[f['id']].get('name', 'file')} (kept)"})
+            elif f["required"]:
+                errors.append(f"{f['label']}: needs a file — the person has to upload it in the app")
+            continue
+        raw = values.get(f["id"])
+        source = "you"
+        if raw in (None, "", []) and f["id"] in auto:
+            raw, source = auto[f["id"]], "your account"
+        if f["type"] == "checkbox":
+            raw = raw if isinstance(raw, list) else ([raw] if raw not in (None, "") else [])
+            raw = [str(x) for x in raw]
+        elif raw is not None and not isinstance(raw, str):
+            raw = str(raw)
+        value, err = check_value(f, raw)
+        if err:
+            errors.append(err)
+            continue
+        data[f["id"]] = value
+        if value not in ("", [], None):
+            shown = ", ".join(value) if isinstance(value, list) else str(value)
+            preview.append({"question": f["label"], "answer": shown, "from": source})
+    cap = _capacity(conn, a, spec, existing["id"] if existing else None)
+    if cap["left"] is not None and cap["left"] <= 0:
+        errors.append("It's full — there are no places left.")
+    for fid, left in cap["options"].items():
+        if data.get(fid) in left and left[data[fid]] <= 0:
+            errors.append(f"“{data[fid]}” is full. Choose another option.")
+    if errors:
+        raise ValueError("\n".join(errors))
+    note = "This replaces your earlier answers." if existing else (f"Your request starts as “{spec['statuses'][0]}”." if spec.get("statuses") else None)
+    if dry_run:
+        return {"preview": preview, "updated": bool(existing), "note": note}
+    if existing:
+        sub_id = existing["id"]
+    else:
+        sub_id = conn.execute("INSERT INTO submissions (app_id, user_id, data, status) VALUES (?, ?, '{}', ?)",
+                              (a["id"], user["id"], spec["statuses"][0] if spec.get("statuses") else None)).lastrowid
+        if user["id"] != a["owner_id"]:
+            _notify_owner(conn, a, None if spec.get("anonymous") else user["name"])
+    conn.execute("UPDATE submissions SET data = ?, updated_at = datetime('now','localtime') WHERE id = ?", (dumps(data), sub_id))
+    conn.commit()
+    monitor.bump("submissions")
+    monitor.emit("submission", app_id=a["id"], title=a["title"], user="Someone" if spec.get("anonymous") else user["name"],
+                 updated=bool(existing), files=[], by_assistant=True)
+    if spec.get("ai_review", True) and any(f["type"] in ("file", "long_text") for f in spec["fields"]):
+        agents.review_async(sub_id)
+    return {"updated": bool(existing), "message": spec.get("confirmation_message"),
+            "status": spec["statuses"][0] if spec.get("statuses") and not existing else None}
+
+
+class AssistantIn(BaseModel):
+    message: str
+    session_id: int | None = None
+
+
+@app.post("/api/agent/assistant")
+def agent_assistant(body: AssistantIn, user=Depends(current_user)):
+    """The person's own Assistant. It reads and prepares; anything it prepares comes back as cards to confirm."""
+    from . import assistant
+    with get_db() as conn:
+        session = agents.load_session(conn, body.session_id, user["id"], "assistant")
+        try:
+            reply, error = assistant.run(conn, dict(user), session, body.message), None
+        except agents.AgentError as e:
+            agents.store_session(conn, session)
+            reply, error = None, str(e)
+    return {"session_id": session["id"], "reply": reply, "error": error, "cards": session.get("cards", [])}
+
+
+class ConfirmIn(BaseModel):
+    id: str
+    accept: bool
+
+
+@app.post("/api/assistant/confirm")
+def assistant_confirm(body: ConfirmIn, user=Depends(current_user)):
+    """Only the person can run what the Assistant prepared — by pressing Confirm. Everything is checked again now."""
+    from . import assistant
+    with get_db() as conn:
+        try:
+            out = assistant.confirm(conn, dict(user), body.id, body.accept)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+    monitor.emit("assistant_action", user=user["name"], confirmed=body.accept, app=out.get("app"))
+    return out
+
+
+@app.get("/api/automations")
+def my_automations(user=Depends(current_user)):
+    """The person's automations — always visible, and switchable by hand without the Assistant."""
+    from . import assistant
+    with get_db() as conn:
+        rows = conn.execute("SELECT au.*, a.title FROM automations au LEFT JOIN apps a ON a.id = au.app_id WHERE au.user_id = ? ORDER BY au.id DESC",
+                            (user["id"],)).fetchall()
+    return {"automations": [{"id": r["id"], "what": assistant._describe_auto(r["kind"], r["title"], json.loads(r["params"])),
+                             "enabled": bool(r["enabled"]), "runs": r["runs"], "last_run": r["last_run"], "last_result": r["last_result"],
+                             "created_at": r["created_at"]} for r in rows]}
+
+
+class AutoIn(BaseModel):
+    enabled: bool
+
+
+@app.post("/api/automations/{auto_id}")
+def toggle_automation(auto_id: int, body: AutoIn, user=Depends(current_user)):
+    with get_db() as conn:
+        if not conn.execute("SELECT 1 FROM automations WHERE id = ? AND user_id = ?", (auto_id, user["id"])).fetchone():
+            raise HTTPException(404, "No such automation")
+        conn.execute("UPDATE automations SET enabled = ? WHERE id = ?", (int(body.enabled), auto_id))
+    return {"ok": True}
+
+
+@app.delete("/api/automations/{auto_id}")
+def delete_automation(auto_id: int, user=Depends(current_user)):
+    with get_db() as conn:
+        conn.execute("DELETE FROM automations WHERE id = ? AND user_id = ?", (auto_id, user["id"]))
+    return {"ok": True}
 
 
 # --------------------------------------------------------------------------- heartbeat + monitor

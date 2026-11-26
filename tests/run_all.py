@@ -22,6 +22,7 @@ SUITES = [
     ("test_creator", "The account answers 'your name / email' for signed-in people; creator recognised"),
     ("test_sites", "Sites: only what was asked; theme free; extras only when switched on"),
     ("test_play", "Quizzes and party lights: scoring, live games, no answer leaks, host-only controls"),
+    ("test_assistant", "The Assistant reads freely and prepares; nothing happens until the person confirms"),
     ("test_proof", "The proof tools: fingerprints catch edits, reproduce catches changes, examiner tasks fail when wrong"),
     ("test_limits", "Cost budget, rate limits, alerts"),
     ("test_ui_smoke", "Phone app and Control Center pages load without script errors"),

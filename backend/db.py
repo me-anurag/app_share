@@ -165,6 +165,8 @@ def init_db():
         conn.executescript(SCHEMA)
         from .play import init as play_init
         play_init(conn)                       # quizzes, live games and party lights
+        from .assistant import init as assistant_init
+        assistant_init(conn)                  # the Assistant's automations
         conn.execute("PRAGMA journal_mode = WAL")
         _migrate(conn)
         if conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0:
