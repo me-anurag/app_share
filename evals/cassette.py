@@ -14,7 +14,8 @@ from tests.fake_claude import Block, Response, Usage
 
 def agent_of(agents, system):
     table = {agents.BUILDER_SYSTEM: "builder", agents.DATA_SYSTEM: "data", agents.DESIGN_SYSTEM: "design",
-             agents.ACCESS_SYSTEM: "access", agents.REVIEW_SYSTEM: "review", agents.REMINDER_SYSTEM: "reminder"}
+             agents.ACCESS_SYSTEM: "access", agents.REVIEW_SYSTEM: "review", agents.REMINDER_SYSTEM: "reminder",
+             agents.SITE_SYSTEM: "site", agents.SITE_EXTRA_SYSTEM: "site"}
     if system in table:
         return table[system]
     return "insights" if system.startswith(agents.INSIGHTS_SYSTEM) else "unknown"

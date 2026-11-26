@@ -23,7 +23,7 @@ import time
 
 import httpx
 
-AGENTS = ("builder", "data", "design", "access", "insights", "review", "reminder")
+AGENTS = ("builder", "data", "design", "access", "site", "insights", "review", "reminder")
 MODE = (os.environ.get("APPSHARE_AI_MODE") or "claude").strip().lower()
 GROQ_URL = os.environ.get("APPSHARE_GROQ_URL", "https://api.groq.com/openai/v1")
 GROQ_MODEL = os.environ.get("APPSHARE_GROQ_MODEL") or "openai/gpt-oss-120b"

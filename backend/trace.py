@@ -557,6 +557,17 @@ def _did(agent, run):
         a = d["args"]
         look = " + ".join(x for x in (a.get("style"), a.get("pattern")) if x)
         return f"Titled it “{a.get('title')}”, wrote the instructions, picked {look or 'a'} look in {a.get('theme_color')}.", d.get("reason")
+    if agent == "site":
+        d = _last_call(run, "submit_site") or _last_call(run, "submit_block")
+        if not d:
+            return None, None
+        site = d["args"].get("site")
+        if site is None:
+            return f"Wrote the {(d['args'].get('block') or {}).get('type')} block the owner switched on.", d.get("reason")
+        blocks = [b.get("type") for p in site.get("pages") or [] for b in p.get("blocks") or [] if isinstance(b, dict)]
+        sug = [x.get("type") for x in site.get("suggested") or [] if isinstance(x, dict)]
+        return (f"Laid out {len(site.get('pages') or [])} page(s) in the {site.get('theme')} theme: {', '.join(blocks)}."
+                + (f" Suggested (not added): {', '.join(sug)}." if sug else "")), d.get("reason")
     if agent == "access":
         d = _last_call(run, "submit_access")
         if not d:

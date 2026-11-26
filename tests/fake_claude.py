@@ -53,6 +53,7 @@ class FakeClaude:
             agents_module.BUILDER_SYSTEM: "builder", agents_module.DATA_SYSTEM: "data",
             agents_module.DESIGN_SYSTEM: "design", agents_module.ACCESS_SYSTEM: "access",
             agents_module.REVIEW_SYSTEM: "review", agents_module.REMINDER_SYSTEM: "reminder",
+            agents_module.SITE_SYSTEM: "site", agents_module.SITE_EXTRA_SYSTEM: "site",
         }
 
     def agent_of(self, system):
