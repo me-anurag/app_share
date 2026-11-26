@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f4f1ea">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="AppShare">
+  <link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials">
+  <link rel="icon" href="/static/icons/icon-192.png">
+  <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+  <title>Sign in · AppShare</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body data-install>
+  <main class="login">
+    <div class="brand"><span class="mark" id="mk"></span><div><b style="font-size:1.15rem">AppShare</b><div class="muted small" id="orgLine">&nbsp;</div></div></div>
+    <h1 id="title">Sign in</h1>
+    <p class="muted" id="lead" style="margin-top:6px">&nbsp;</p>
+    <form id="form" class="card pad" style="margin-top:18px" novalidate></form>
+    <div id="err"></div>
+    <div class="section">
+      <div class="section-head"><span class="label" id="demoLabel">Demo accounts</span><span class="muted tiny">tap to sign in</span></div>
+      <div id="people"></div>
+    </div>
+    <div id="ver"></div>
+  </main>
+  <script src="/static/common.js"></script>
+  <script>
+    document.getElementById("mk").innerHTML = MARK;
+    document.getElementById("ver").innerHTML = versionLine();
+    const next = new URLSearchParams(location.search).get("next") || "/";
+    const go = () => { location.href = next.startsWith("/") ? next : "/"; };
+    const err = m => document.getElementById("err").innerHTML = `<div class="notice bad" style="margin-top:12px">${esc(m)}</div>`;
+    async function signIn(email) {
+      try { await api("/api/login", { json: { email }, allow401: true }); go(); } catch (e) { err(e.message); }
+    }
+    const GROUP_TITLE = { university: { faculty: "Faculty", staff: "Staff", student: "Students" },
+                          office: { manager: "Managers", employee: "Employees", staff: "Staff" }, general: { member: "People" } };
+
+    api("/api/workspace", { allow401: true }).then(w => {
+      document.title = `Sign in · ${w.org}`;
+      document.getElementById("orgLine").textContent = `${w.org} · ${MODE_LABEL[w.mode]}`;
+      const f = document.getElementById("form");
+      if (w.mode === "general") {
+        document.getElementById("title").textContent = "Make and share little apps";
+        document.getElementById("lead").textContent = "RSVPs, polls, sign-ups and feedback forms — share them with a link, like a Doc.";
+        f.innerHTML = `<label class="field-lbl" for="n" style="margin-top:0">Your name</label><input class="input" id="n" autocomplete="name" required>
+          <label class="field-lbl" for="e">Email</label><input class="input" id="e" type="email" autocomplete="email" required>
+          <button class="btn primary block" style="margin-top:16px">Continue</button>`;
+        f.onsubmit = async ev => {
+          ev.preventDefault();
+          try { await api("/api/signup", { json: { name: f.querySelector("#n").value, email: f.querySelector("#e").value }, allow401: true }); go(); }
+          catch (e) { err(e.message); }
+        };
+        document.getElementById("demoLabel").textContent = "Or continue as someone from the demo";
+      } else {
+        const dom = (w.people[0]?.email || "").split("@")[1] || "";
+        document.getElementById("lead").textContent = w.mode === "university" ? `Use your ${w.org} email — students, faculty and staff.` : `Use your ${w.org} work email.`;
+        f.innerHTML = `<label class="field-lbl" for="e" style="margin-top:0">${w.mode === "university" ? "University" : "Work"} email</label>
+          <input class="input" id="e" type="email" placeholder="name@${esc(dom)}" autocomplete="email" required>
+          <button class="btn primary block" style="margin-top:14px">Sign in</button>`;
+        f.onsubmit = ev => { ev.preventDefault(); signIn(f.querySelector("#e").value); };
+      }
+      const titles = GROUP_TITLE[w.mode];
+      const groups = {};
+      w.people.forEach(p => (groups[p.kind] ||= []).push(p));
+      document.getElementById("people").innerHTML = Object.entries(groups).map(([k, list]) => `
+        <div class="muted tiny" style="margin:14px 2px 6px;font-weight:700;letter-spacing:.06em;text-transform:uppercase">${esc(titles[k] || "People")}</div>
+        <div class="card">${list.map(p => `<button class="acct" data-email="${esc(p.email)}"><span class="pi">${esc(initials(p.name))}</span>
+          <span style="min-width:0"><b>${esc(p.name)}</b><span class="ellipsis">${esc(p.title || p.groups || p.email)}</span></span>${ic("chev")}</button>`).join("")}</div>`).join("");
+      document.querySelectorAll(".acct").forEach(b => b.onclick = () => signIn(b.dataset.email));
+    });
+  </script>
+</body>
+</html>

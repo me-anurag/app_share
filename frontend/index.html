@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f4f1ea">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="AppShare">
+  <link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials">
+  <link rel="icon" href="/static/icons/icon-192.png">
+  <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+  <title>AppShare</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body data-install>
+  <main class="shell">
+    <section id="tab-home"></section>
+    <section id="tab-create" class="hidden"></section>
+    <section id="tab-inbox" class="hidden"></section>
+  </main>
+  <nav class="tabbar" aria-label="Sections"><div class="tabs">
+    <button data-tab="home"></button>
+    <button data-tab="create" class="create-tab"></button>
+    <button data-tab="inbox"></button>
+  </div></nav>
+
+  <script src="/static/common.js"></script>
+  <script src="/agents/characters.js"></script>
+  <script>
+    document.querySelector('[data-tab=home]').innerHTML = ic("home") + "<span>Home</span>";
+    document.querySelector('[data-tab=create]').innerHTML = ic("plus") + "<span>Create</span>";
+    document.querySelector('[data-tab=inbox]').innerHTML = ic("bell") + `<span>Inbox</span><i class="badge-n hidden" data-inbox-n></i>`;
+
+    let me, sessionId = null, templates = [];
+    const $ = id => document.getElementById(id);
+    const due = s => {
+      const d = deadline(s);
+      const t = d.text.replace(/^Closes /, "").replace(new RegExp(` ${new Date().getFullYear()}$`), "");
+      const text = t[0].toUpperCase() + t.slice(1);
+      return { text, soon: d.soon, closed: d.closed, mid: /^(In|Today|Tomorrow)/.test(text) ? text[0].toLowerCase() + text.slice(1) : text };
+    };
+
+    function setTab(t, push = true) {
+      ["home", "create", "inbox"].forEach(k => $("tab-" + k).classList.toggle("hidden", k !== t));
+      document.querySelectorAll(".tabbar button").forEach(b => b.classList.toggle("on", b.dataset.tab === t));
+      if (push) history.replaceState(null, "", t === "home" ? "/" : "/?tab=" + t);
+      scrollTo(0, 0);
+      if (t === "home") loadHome();
+      if (t === "inbox") loadInbox();
+      if (t === "create") drawCreate();
+    }
+    document.querySelectorAll(".tabbar button").forEach(b => b.onclick = () => setTab(b.dataset.tab));
+
+    // ============================================================ HOME
+    // Greeting · three numbers at a glance · then plain lists. Status is a quiet word, never a box.
+    async function loadHome() {
+      const d = await api("/api/home");
+      const first = me.name.replace(/^(Prof\.|Dr\.|Ms\.|Mr\.)\s*/, "").split(" ")[0];
+      const rest = d.shared.filter(a => !d.todo.some(t => t.id === a.id) && !d.tracked.some(t => t.id === a.id));
+      const responses = d.mine.reduce((n, a) => n + a.responses, 0);
+      const waiting = d.mine.reduce((n, a) => n + (a.waiting || 0), 0);
+      const done = d.shared.filter(a => a.submitted).length;
+      const glance = [
+        { n: d.todo.length, label: "to answer", go: "secTodo", hot: d.todo.length > 0 },
+        d.mine.length ? { n: responses, label: d.mine.length === 1 ? "responses to your app" : "responses to your apps", go: "secMine" }
+                      : { n: done, label: "answered", go: "secShared" },
+        waiting ? { n: waiting, label: "waiting for you", go: "secMine", hot: true }
+                : d.tracked.length ? { n: d.tracked.length, label: d.tracked.length === 1 ? "request sent" : "requests sent", go: "secReq" }
+                : { n: d.mine.length || d.shared.length, label: d.mine.length ? "apps you made" : "shared with you", go: d.mine.length ? "secMine" : "secShared" },
+      ];
+
+      const P = [`<div class="page-head"><div class="over">${esc(todayLine())}</div><h1>${greeting()}, ${esc(first)}</h1></div>
+        <div class="card glance">${glance.map(g => `<button data-go="${g.go}" class="${g.hot ? "hot" : ""} ${g.n ? "" : "zero"}"><b>${g.n}</b><span>${esc(g.label)}</span></button>`).join("")}</div>`];
+
+      if (d.todo.length) P.push(`<div class="sec" id="secTodo"><div class="sec-t"><h2>To do</h2><span class="n">${d.todo.length}</span></div>
+        <div class="card list">${d.todo.map(a => { const w = due(a.closes_at); return `
+          <a class="lrow" href="/a/${a.slug}">${tileHtml(a.kind, a.theme_color)}
+            <div><div class="t">${esc(a.title)}</div><div class="m">${esc(a.owner)} · ${esc(kindOf(a.kind).label)}</div></div>
+            <span class="end ${w.soon ? "soon" : ""}">${esc(a.closes_at ? w.text : "Open")}</span></a>`; }).join("")}</div></div>`);
+
+      if (d.mine.length) P.push(`<div class="sec" id="secMine"><div class="sec-t"><h2>Your apps</h2><span class="n">${d.mine.length}</span><button id="newBtn">${ic("plus")} New</button></div>
+        <div class="card list">${d.mine.map(a => {
+          const pct = a.audience ? Math.min(100, Math.round(a.responses / a.audience * 100)) : null;
+          const meta = [`${a.responses}${a.audience ? ` of ${a.audience}` : ""} ${a.audience ? "responded" : a.responses === 1 ? "response" : "responses"}`,
+                        a.status === "draft" ? "not shared yet" : a.closes_at ? due(a.closes_at).mid : ""].filter(Boolean).join(" · ");
+          return `<a class="lrow" href="/manage/${a.id}" style="--tc:${esc(a.theme_color)}">${tileHtml(a.kind, a.theme_color)}
+            <div><div class="t">${esc(a.title)}</div><div class="m">${esc(meta)}</div></div>
+            <span class="end">${a.waiting ? `<span class="sw brand">${a.waiting} waiting</span>` : appWord(a)}</span>
+            ${pct !== null && a.status !== "draft" ? `<div class="pl"><i style="width:${pct}%"></i></div>` : ""}</a>`; }).join("")}</div></div>`);
+      const firstApp = `<div class="sec"><div class="card list"><button class="lrow" id="newBtn"><span class="ti">${ic("sparkle")}</span>
+          <div><div class="t">Make your own app</div><div class="m">A poll, a sign-up, feedback — describe it or pick a template</div></div><span class="end">${ic("chev")}</span></button></div></div>`;
+
+      if (d.tracked.length) P.push(`<div class="sec" id="secReq"><div class="sec-t"><h2>Your requests</h2><span class="n">${d.tracked.length}</span></div>
+        <div class="card list">${d.tracked.map(a => `<a class="lrow" href="/a/${a.slug}">${tileHtml(a.kind, a.theme_color)}
+          <div><div class="t">${esc(a.title)}</div><div class="m">${a.my_count} sent · latest is</div></div><span class="end">${statusWord(a.my_status)}</span></a>`).join("")}</div></div>`);
+
+      P.push(`<div class="sec" id="secShared"><div class="sec-t"><h2>Shared with you</h2>${rest.length ? `<span class="n">${rest.length}</span>` : ""}</div>
+        ${rest.length ? `<div class="card list">${rest.map(a => {
+          const closed = a.window === "closed" || a.status === "closed";
+          return `<a class="lrow" href="/a/${a.slug}">${tileHtml(a.kind, a.theme_color, closed)}
+            <div><div class="t">${esc(a.title)}</div><div class="m">${esc(a.owner)} · ${esc(a.closes_at && !closed ? due(a.closes_at).mid : kindOf(a.kind).label)}</div></div>
+            <span class="end">${a.submitted ? (a.my_status ? statusWord(a.my_status) : `<span class="sw ok done">Done</span>`) : closed ? `<span class="sw">Closed</span>` : ic("chev")}</span></a>`; }).join("")}</div>`
+          : `<div class="card empty-state"><div class="ei">${ic("inbox")}</div><b>Nothing shared with you yet</b><p>When someone shares an app with you or your group, it appears here.</p></div>`}</div>`);
+      if (!d.mine.length) P.push(firstApp);     // people who haven't made anything yet see the invitation last, not first
+
+      $("tab-home").innerHTML = P.join("");
+      $("newBtn").onclick = () => setTab("create");
+      document.querySelectorAll("[data-go]").forEach(b => b.onclick = () => $(b.dataset.go)?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    }
+
+    // ============================================================ CREATE
+    const PLACEHOLDER = {
+      university: "e.g. Anonymous feedback on today's workshop for my section, three ratings and one comment",
+      office: "e.g. Sign-up for the Friday design review, 8 places, ask which topic they want to present",
+      general: "e.g. RSVP for my sister's farewell on Saturday — ask for plus-ones and food preferences",
+    };
+    let createDrawn = false;
+    async function drawCreate() {
+      if (createDrawn) return;
+      createDrawn = true;
+      if (!templates.length) templates = (await api("/api/templates")).templates;
+      $("tab-create").innerHTML = `
+        <div class="page-head"><h1>Create</h1><p class="sub">Say what you need in a sentence. The agents build it: questions, rules, design and who it's for.</p></div>
+        <div class="sec"><div class="card ask-box">
+          <textarea id="ask" rows="3" placeholder="${esc(PLACEHOLDER[me.mode])}"></textarea>
+          <div class="bar">${me.agents ? `<span class="muted tiny grow">${ic("sparkle")} Builder · Data · Design · Access</span>`
+            : `<span class="muted tiny grow">Agents need an API key on the server. Templates work now.</span>`}
+            <button class="btn primary sm" id="askGo">${ic("send")}Build it</button></div>
+        </div></div>
+        <div class="sec convo" id="convo"></div>
+        <div id="prog" class="sec"></div>
+        <div id="result"></div>
+        <div class="sec"><div class="sec-t"><h2>Or start from a template</h2><span class="n">${templates.length}</span></div>
+          <div class="card list">${templates.map(t => `<button class="lrow" data-t="${t.id}"><span class="ti soft">${ic(t.icon)}</span>
+            <div><div class="t">${esc(t.name)}</div><div class="m">${esc(t.blurb)}</div></div><span class="end">${ic("chev")}</span></button>`).join("")}</div></div>`;
+      document.querySelectorAll("[data-t]").forEach(b => b.onclick = () => templateSheet(templates.find(t => t.id === b.dataset.t)));
+      $("askGo").onclick = send;
+      $("ask").addEventListener("keydown", e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) send(); });
+    }
+
+    function templateSheet(t) {
+      const s = sheet(`
+        <div class="sheet-head"><span class="kind-tile">${ic(t.icon)}</span><div class="grow"><h2>${esc(t.name)}</h2><p class="muted small">${esc(t.blurb)}</p></div>
+          <button class="icon-btn" data-close aria-label="Close">${ic("x")}</button></div>
+        <div class="sec-t" style="margin-top:8px"><h2>What it asks</h2><span class="n">${t.fields.length}</span></div>
+        <div class="card list">${t.fields.map((f, i) => `<div class="lrow" style="grid-template-columns:28px minmax(0,1fr)"><span class="muted small" style="text-align:center">${i + 1}</span><div class="t" style="font-weight:500">${esc(f)}</div></div>`).join("")}</div>
+        ${t.rules.length ? `<p class="muted small" style="margin-top:10px">${t.rules.map(esc).join(" · ")}</p>` : ""}
+        <div class="stack" style="margin-top:18px">
+          <button class="btn primary block" id="tUse">Use this template</button>
+          <button class="btn block" id="tCustom">${ic("sparkle")}Change it with the agents first</button></div>`);
+      s.el.querySelector("#tUse").onclick = async () => {
+        s.el.querySelector("#tUse").disabled = true;
+        const app = await api(`/api/templates/${t.id}/use`, { json: {} });
+        s.close();
+        draftReady(app, "Made from a template. You can change anything from the app's page.");
+      };
+      s.el.querySelector("#tCustom").onclick = () => { s.close(); const a = $("ask"); a.value = t.prompt; a.focus(); a.setSelectionRange(a.value.length, a.value.length); scrollTo({ top: 0, behavior: "smooth" }); };
+    }
+
+    async function send() {
+      const box = $("ask"), text = box.value.trim();
+      if (!text) return box.focus();
+      box.value = "";
+      $("askGo").disabled = true;
+      $("convo").insertAdjacentHTML("beforeend", `<div class="bubble me">${esc(text)}</div>`);
+      $("result").innerHTML = "";
+      try {
+        const res = await runBuilder({ message: text, sessionId, progressEl: $("prog") });
+        sessionId = res.session_id;
+        $("convo").insertAdjacentHTML("beforeend", res.error ? `<div class="bubble err">${esc(res.error)}</div>` : `<div class="bubble agent">${esc(res.reply)}</div>`);
+        if (res.app && res.app_changed) draftReady(res.app);
+      } catch (e) { $("convo").insertAdjacentHTML("beforeend", `<div class="bubble err">${esc(e.message)}</div>`); }
+      $("askGo").disabled = false;
+    }
+
+    function draftReady(app, note = "") {
+      const r = $("result");
+      const qs = app.spec.fields.filter(f => f.type !== "info").length;
+      r.innerHTML = `<div class="sec"><div class="sec-t"><h2>${app.status === "draft" ? "Ready to share" : "Updated"}</h2></div>
+        <div class="card" style="--tc:${esc(app.theme_color)}">
+          <div class="lrow" style="padding:14px">${tileHtml(app.kind, app.theme_color)}
+            <div><div class="t" style="white-space:normal">${esc(app.title)}</div><div class="m">${esc(kindOf(app.kind).label)} · ${qs} ${qs === 1 ? "question" : "questions"}${app.closes_at ? " · " + esc(due(app.closes_at).mid) : ""}</div></div>
+            <span class="end">${appWord(app)}</span></div>
+          ${app.description ? `<p class="small" style="padding:0 14px;color:var(--ink-2)">${esc(app.description)}</p>` : ""}
+          ${(app.rules || []).length ? `<p class="muted small" style="padding:6px 14px 0">${app.rules.map(esc).join(" · ")}</p>` : ""}
+          ${note ? `<p class="muted small" style="padding:6px 14px 0">${esc(note)}</p>` : ""}
+          <div class="row" style="padding:14px;gap:8px"><a class="btn grow" href="/a/${app.slug}?preview=1">${ic("eye")}Preview</a>
+            <a class="btn grow" href="/manage/${app.id}">${ic("grid")}Manage</a>
+            <button class="btn primary grow" id="drShare">${ic("send")}Share</button></div></div></div>`;
+      $("drShare").onclick = () => openShare(app, res => { sharedSheet(app, res); app.status = res.status; });
+      r.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    // ============================================================ INBOX
+    const N_ICON = { reminder: "clock", review: "eye", status: "ticket", shared: "link", response: "inbox" };
+    async function loadInbox() {
+      const d = await api("/api/notifications");
+      $("tab-inbox").innerHTML = `<div class="page-head"><h1>Inbox</h1>${d.unread ? `<p class="sub">${d.unread} new</p>` : ""}</div>
+        <div class="sec">${d.items.length ? `<div class="card list">${d.items.map(n => `
+          <a class="lrow ${n.read_at ? "" : "unread"}" style="align-items:start" href="${n.slug ? (n.kind === "review" || n.mine ? "/manage/" + n.app_id : "/a/" + n.slug) : "#"}">
+            <span class="ti soft">${ic(N_ICON[n.kind] || "bell")}</span>
+            <div><div class="t" style="white-space:normal">${esc(n.title)}</div><div class="m wrap">${esc(n.body)}</div></div>
+            <span class="end" style="font-weight:500">${esc(timeAgo(n.created_at))}</span></a>`).join("")}</div>`
+          : `<div class="card empty-state"><div class="ei">${ic("bell")}</div><b>You're all caught up</b><p>Reminders, decisions on your requests and newly shared apps show up here.</p></div>`}</div>`;
+      if (d.unread) { await api("/api/notifications/read", { json: {} }).catch(() => {}); refreshBell(); }
+    }
+
+    (async () => {
+      me = await renderTopbar();
+      const t = new URLSearchParams(location.search).get("tab");
+      setTab(["create", "inbox"].includes(t) ? t : "home", false);
+      window.addEventListener("appshare:reconnected", () => { const on = document.querySelector(".tabbar .on")?.dataset.tab; if (on === "home") loadHome(); });
+      // live: new apps shared with you, responses, statuses and messages appear without reloading
+      Live.on(() => {
+        const on = document.querySelector(".tabbar .on")?.dataset.tab;
+        if (userIsBusy()) return;
+        const y = scrollY;
+        if (on === "home") loadHome().then(() => scrollTo(0, y));
+        if (on === "inbox") loadInbox().then(() => scrollTo(0, y));
+      });
+    })();
+  </script>
+</body>
+</html>

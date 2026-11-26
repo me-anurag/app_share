@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#c4471a">
+  <title>Connecting · AppShare</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    .radar { position: relative; width: 120px; height: 120px; margin: .5rem auto 1rem; }
+    .radar i { position: absolute; inset: 0; border-radius: 50%; border: 2px solid var(--brand); opacity: 0; animation: wave 2.4s ease-out infinite; }
+    .radar i:nth-child(2) { animation-delay: .8s; } .radar i:nth-child(3) { animation-delay: 1.6s; }
+    .radar b { position: absolute; inset: 38px; border-radius: 12px; background: var(--brand); display: grid; place-items: center; color: #fff; font-size: 1.3rem; }
+    @keyframes wave { 0% { transform: scale(.35); opacity: .9; } 100% { transform: scale(1); opacity: 0; } }
+    .found .radar i { animation: none; }
+    .found .radar b { background: var(--ok); }
+  </style>
+</head>
+<body>
+  <div class="login-wrap" style="text-align:center" id="box">
+    <div class="card">
+      <div class="radar" aria-hidden="true"><i></i><i></i><i></i><b>⇄</b></div>
+      <h1 id="title">Looking for the server…</h1>
+      <p class="muted" id="msg">The AppShare server isn't reachable right now. This screen keeps checking and opens the app as soon as it's back — you don't need to do anything.</p>
+      <p class="small muted" id="detail"></p>
+      <button class="btn-primary" onclick="tryNow()">Try now</button>
+    </div>
+  </div>
+  <script>
+    // Works without any other script (this page is served from the offline cache).
+    let tries = 0;
+    let server = "";
+    try { server = localStorage.getItem("appshare.server") || ""; } catch { /* ignore */ }
+    if (server) document.getElementById("detail").textContent = `Last connected to: ${server}`;
+
+    async function tryNow() {
+      tries++;
+      try {
+        const res = await fetch("/api/ping", { cache: "no-store" });
+        const data = res.ok && (res.headers.get("content-type") || "").includes("json") ? await res.json() : null;
+        if (data && data.app === "appshare") {
+          document.getElementById("box").classList.add("found");
+          document.getElementById("title").textContent = "Connected!";
+          document.getElementById("msg").textContent = "Opening AppShare…";
+          const back = location.pathname.startsWith("/static/") ? "/" : location.href;
+          setTimeout(() => location.replace(back), 500);
+          return;
+        }
+      } catch { /* still offline */ }
+      document.getElementById("detail").textContent = `${server ? "Last connected to: " + server + " · " : ""}checked ${tries} time${tries === 1 ? "" : "s"}`;
+    }
+    setInterval(tryNow, 3000);
+    window.addEventListener("online", tryNow);
+    document.addEventListener("visibilitychange", () => { if (!document.hidden) tryNow(); });
+  </script>
+</body>
+</html>

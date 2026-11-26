@@ -1,0 +1,23 @@
+{
+  "name": "AppShare",
+  "short_name": "AppShare",
+  "description": "Build and share apps with your organization as easily as sharing a doc.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "launch_handler": { "client_mode": ["navigate-existing", "auto"] },
+  "handle_links": "preferred",
+  "orientation": "portrait",
+  "background_color": "#f5f3ee",
+  "theme_color": "#c4471a",
+  "icons": [
+    { "src": "/static/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/static/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/static/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Build a new app", "url": "/?tab=create" },
+    { "name": "Inbox", "url": "/?tab=inbox" }
+  ]
+}
