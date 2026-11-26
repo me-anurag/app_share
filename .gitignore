@@ -11,3 +11,6 @@ venv/
 Thumbs.db
 .vscode/
 .idea/
+
+# slides stay on this computer
+docs/*.pptx
