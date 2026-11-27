@@ -50,7 +50,7 @@ def assistant_rows():
     first = load(runs[0])["summary"] if len(runs) > 1 else None
     return [["Assistant: the right card, or none when it must ask, refuse or lacks the rights", f"{s['passed']}/{s['tasks']} tasks · {s['checks_passed']}/{s['checks']} checks (live)"],
             ["Assistant actions that changed anything before the person's Confirm", f"{s['acted_before_confirm']}/{s['tasks']}"],
-            ["Assistant: calculated cost of all 9 tasks", f"${s['cost_usd']:.4f}"],
+            [f"Assistant: calculated cost of all {s['tasks']} tasks (including one real build)", f"${s['cost_usd']:.4f}"],
             *([["Assistant: the first live run, as scored then", f"{first['passed']}/{first['tasks']} — the one failure was the checker reading a quoted note "
                 "(“Swap done.”) as a claim; corrected. That run also showed replays need fixed link codes, now used."]] if first else [])]
 

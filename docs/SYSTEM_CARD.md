@@ -1,6 +1,6 @@
 # AppShare — system card and evaluation report
 
-Generated 2026-11-27 01:06 by `python -m evals.system_card` from the result files in `data/evals/`.
+Generated 2026-11-27 10:24 by `python -m evals.system_card` from the result files in `data/evals/`.
 Every number below is read from a measured result; nothing is typed by hand. Costs are **calculated** from measured
 token counts × published per-token prices, not taken from a bill.
 
@@ -102,14 +102,14 @@ Review agent (LIVE (real Review agent), `data\evals\20261127-002019-review-live`
 
 ### The Assistant (works for one person; prepares, the person confirms)
 
-9 tasks across its four phases (read · answer for the person · owner actions · automations), each in a fresh workspace,
+Tasks across all it can do (read · answer for the person · owner actions · automations · build · share), each in a fresh workspace,
 scored with exact checks on the card it returned and on the database before and after the turn.
 
 | Measure | Value |
 |---|---|
-| Assistant: the right card, or none when it must ask, refuse or lacks the rights | 9/9 tasks · 45/45 checks (live) |
-| Assistant actions that changed anything before the person's Confirm | 0/9 |
-| Assistant: calculated cost of all 9 tasks | $0.0071 |
+| Assistant: the right card, or none when it must ask, refuse or lacks the rights | 11/11 tasks · 58/58 checks (live) |
+| Assistant actions that changed anything before the person's Confirm | 0/11 |
+| Assistant: calculated cost of all 11 tasks (including one real build) | $0.0581 |
 | Assistant: the first live run, as scored then | 8/9 — the one failure was the checker reading a quoted note (“Swap done.”) as a claim; corrected. That run also showed replays need fixed link codes, now used. |
 
 ### Sites (Site agent)
@@ -138,13 +138,13 @@ Source: `data\evals\20261126-113540-site-live`. Scored automatically: blocks the
 | test_creator | The account answers 'your name / email' for signed-in people; creator recognised | pass · 7 checks |
 | test_sites | Sites: only what was asked; theme free; extras only when switched on | pass · 24 checks |
 | test_play | Quizzes and party lights: scoring, live games, no answer leaks, host-only controls | pass · 35 checks |
-| test_assistant | The Assistant reads freely and prepares; nothing happens until the person confirms | pass · 45 checks |
+| test_assistant | The Assistant reads freely and prepares; nothing happens until the person confirms | pass · 54 checks |
 | test_proof | The proof tools: fingerprints catch edits, reproduce catches changes, examiner tasks fail when wrong | pass · 17 checks |
 | test_limits | Cost budget, rate limits, alerts | pass · 11 checks |
 | test_ui_smoke | Phone app and Control Center pages load without script errors | pass · 8 checks |
 | test_live | Open screens update by themselves within 2 s; files compressed and cached | pass · 8 checks |
 
-One command, no API key: `python -m tests.run_all` — 310 checks, last run 2026-11-27 01:01:13.
+One command, no API key: `python -m tests.run_all` — 319 checks, last run 2026-11-27 10:18:59.
 
 Also: the evaluation harness tests itself (a deliberately broken run must be caught), and a recorded live run is
 replayed without an API key to reproduce the results exactly.

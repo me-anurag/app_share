@@ -1,6 +1,6 @@
 """The Assistant with the real model: does it prepare exactly the right card — and nothing when it shouldn't?
 
-  python -m evals.assistant_eval --live --yes            9 tasks with the real model (≈ $0.03–0.05; every reply recorded)
+  python -m evals.assistant_eval --live --yes            11 tasks with the real model (≈ $0.06, one real build; every reply recorded)
   python -m evals.assistant_eval --replay data/evals/<…-assistant-live>   re-score the recording (free)
 
 Each task runs in a fresh, seeded workspace (real data never touched). Scored with exact checks against the cards the
@@ -39,6 +39,12 @@ TASKS = [
      "expect": {"cards": 1, "kind": "automation", "app": "Workshop feedback", "what": ["Monday", "09:00"]}},
     {"id": "A9-no-rights", "phase": 3, "who": KABIR, "message": "Change the deadline of the workshop feedback to 1 March 2099.",
      "expect": {"cards": 0, "note": "only the owner or editors can change an app"}},
+    {"id": "A10-build", "phase": 5, "who": MEHTA,
+     "message": "Build a sign-up for the robotics workshop for 34ML: they pick a morning or afternoon session, 20 places in total.",
+     "expect": {"cards": 1, "kind": "build", "confirm": True,
+                "built": {"title_has": "robotics", "options": ["morning", "afternoon"], "max_responses": 20}}},
+    {"id": "A11-share", "phase": 5, "who": MEHTA, "message": "Share the robotics workshop sign-up with section 34ML so they can fill it in.",
+     "expect": {"cards": 1, "kind": "share", "people": ["34ML"]}},
 ]
 DONE_CLAIM = re.compile(r"\b(i('ve| have)? (sent|submitted|approved|reminded|changed|extended|set up)|has been (sent|submitted|approved|changed|set up)|"
                         r"(is|are) now (approved|on|set)|done[.!])", re.I)
@@ -89,12 +95,14 @@ def score(task, out, before, after, confirmed):
     if e["cards"] and cards:
         c = cards[0]
         add(f"card kind {e['kind']}", c["kind"] == e["kind"], c["kind"])
-        add(f"card is for “{e['app']}”", c.get("app") == e["app"], c.get("app"))
+        if e.get("app"):
+            add(f"card is for “{e['app']}”", c.get("app") == e["app"], c.get("app"))
         rows = {r["label"]: r["value"] for r in c["rows"]}
         for k, v in (e.get("rows") or {}).items():
             add(f"answer {k} = {v}", rows.get(k) == v, rows.get(k))
         if e.get("people"):
-            add(f"exactly these people: {', '.join(e['people'])}", sorted(rows) == sorted(e["people"]), sorted(rows))
+            who = sorted(k for k in rows if k not in ("Status", "Open by link"))      # a share card also says what else changes
+            add(f"exactly these people: {', '.join(e['people'])}", who == sorted(e["people"]), who)
         if e.get("status"):
             add(f"status → {e['status']}", all(v.endswith(e["status"]) for v in rows.values()), list(rows.values()))
         if e.get("closes_at"):
@@ -103,6 +111,17 @@ def score(task, out, before, after, confirmed):
             add(f"automation runs {w}", w.lower() in json.dumps(rows).lower(), rows.get("What"))
     if e.get("confirm"):
         add("after Confirm it is done", confirmed, confirmed)
+    b = e.get("built")
+    if b:
+        from backend.db import connect
+        c = connect()
+        row = c.execute("SELECT * FROM apps WHERE title LIKE ? ORDER BY id DESC", (f"%{b['title_has']}%",)).fetchone()
+        c.close()
+        spec = json.loads(row["spec"]) if row else {}
+        opts = [o.lower() for f in spec.get("fields", []) for o in (f.get("options") or [])]
+        add("the app exists as a private draft", row is not None and row["status"] == "draft", row["status"] if row else "no app")
+        add(f"it offers {' / '.join(b['options'])}", all(any(w in o for o in opts) for w in b["options"]), opts)
+        add(f"{b['max_responses']} places in total", spec.get("max_responses") == b["max_responses"], spec.get("max_responses"))
     return checks
 
 
@@ -159,12 +178,17 @@ def run(mode, out_dir, cassettes_from=None):
         if t["expect"].get("confirm") and out.get("cards"):
             r = clients[t["who"]].post("/api/assistant/confirm", json={"id": out["cards"][0]["id"], "accept": True})
             confirmed = r.status_code == 200 and r.json().get("ok")
+            if confirmed and t["expect"].get("kind") == "build":
+                c = connect()
+                c.execute("UPDATE apps SET slug = 'evalbuilt' WHERE id = (SELECT MAX(id) FROM apps)")
+                c.commit()
+                c.close()
         if mode == "live":
             caller.dump(os.path.join(out_dir, "cassettes", t["id"] + ".json"),
                         {"case": t["id"], "recorded_at": time.strftime("%Y-%m-%d %H:%M:%S"), "wall_ms": wall, "prompt": t["message"]})
         from backend import trace
         with trace._lock:
-            row = trace._db().execute("SELECT SUM(s.cost) FROM steps s JOIN runs r ON r.id = s.run_id WHERE r.agent IN ('assistant','insights','builder') "
+            row = trace._db().execute("SELECT SUM(s.cost) FROM steps s JOIN runs r ON r.id = s.run_id WHERE 1 = 1 "
                                       "AND r.started_at >= ?", (int(t0 * 1000),)).fetchone()
         checks = score(t, out, before, after, confirmed)
         results.append({"id": t["id"], "phase": t["phase"], "who": t["who"].split("@")[0], "message": t["message"], "reply": out.get("reply"),

@@ -150,7 +150,7 @@ def main():
 
     from evals.eval_guide import assistant_rows, site_rows
     md += ["### The Assistant (works for one person; prepares, the person confirms)", "",
-           "9 tasks across its four phases (read · answer for the person · owner actions · automations), each in a fresh workspace,",
+           "Tasks across all it can do (read · answer for the person · owner actions · automations · build · share), each in a fresh workspace,",
            "scored with exact checks on the card it returned and on the database before and after the turn.", "",
            table(assistant_rows(), head=("Measure", "Value")), ""]
     md += ["### Sites (Site agent)", "", f"Source: `{os.path.relpath(si_dir, ROOT) if si_dir else '—'}`. "

@@ -193,8 +193,8 @@ def summary():
     if AS:
         sm = AS["summary"]
         q.append(M("assistant", "Assistant: the right card, or none when it must ask or refuse", wilson(sm["passed"], sm["tasks"]), "live", asd,
-                   how="9 tasks across all four phases; exact checks on each card and on the database",
-                   note=f"{sm['checks_passed']}/{sm['checks']} checks · ${sm['cost_usd']:.4f} for all 9 · a small sample"))
+                   how=f"{sm['tasks']} tasks: read, answer for the person, owner actions, automations, build and share; exact checks on each card and on the database",
+                   note=f"{sm['checks_passed']}/{sm['checks']} checks · ${sm['cost_usd']:.4f} for all {sm['tasks']} · a small sample"))
     ex = sorted(d for d in glob.glob(os.path.join(EV, "2*-examiner")))
     if ex:
         X = [(_load(os.path.join(d, "results.json")) or {}).get("result") for d in ex]
@@ -417,7 +417,10 @@ def evidence(mid):
                                    "; ".join(f"{c['check']} ({c['detail']})" for c in r["checks"] if not c["passed"])]})
         note = ("Each task ran in a fresh workspace. 'Nothing changed before Confirm' compares the database before and after the turn. "
                 "An earlier run (kept in the history) scored 8/9: its one failure was the checker reading a quoted note (“Swap done.”) as a "
-                "claim; the check was corrected. That run also showed replays need fixed link codes, which the evaluation now uses.")
+                "claim; the check was corrected. That run also showed replays need fixed link codes, which the evaluation now uses. "
+                "When build and share were added, a run showed the Assistant asking three questions instead of preparing a build "
+                "(9/11); its instructions now trust the Builder's defaults, and the next run passed 11/11. One run crashed in the "
+                "scorer before saving (kept as …-crashed-scorer).")
     elif mid == "examiner":
         cols = ["When", "Request", "Result", "Checks", "Cost"]
         for d in sorted(glob.glob(os.path.join(EV, "2*-examiner")), reverse=True):

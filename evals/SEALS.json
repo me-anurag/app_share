@@ -485,7 +485,182 @@
    "sha256": "0c7c28ce1f5778d8e673ea90944d02008dcc9218ef8ac64601bd96c7278127a3",
    "sealed_at": "2026-11-27 01:05:40",
    "bytes": 14565
+  },
+  "data/evals/20261127-102007-assistant-live/results.json": {
+   "sha256": "84709d5b015b28b9f81899a22b5ac0fa811d5f268fff9bb11b3dfb836adce11c",
+   "sealed_at": "2026-11-27 10:21:06",
+   "bytes": 17557
+  },
+  "data/evals/20261127-102007-assistant-live/cassettes/A1-overview.json": {
+   "sha256": "2df81961343736c4d1420ec5b50706cbb8a206c6dfebff5f3b53cf4bb89e2b34",
+   "sealed_at": "2026-11-27 10:21:06",
+   "bytes": 3310
+  },
+  "data/evals/20261127-102007-assistant-live/cassettes/A10-build.json": {
+   "sha256": "1895c4c4ca0cf5087eee044d259e16170a787589434cbbbe25c1af10fd3f25ce",
+   "sealed_at": "2026-11-27 10:21:06",
+   "bytes": 3042
+  },
+  "data/evals/20261127-102007-assistant-live/cassettes/A11-share.json": {
+   "sha256": "d3e854a26d2f2498b6448004234c38982b850a06be7b771097cb486c23ef3f54",
+   "sealed_at": "2026-11-27 10:21:06",
+   "bytes": 4559
+  },
+  "data/evals/20261127-102007-assistant-live/cassettes/A2-rsvp.json": {
+   "sha256": "1c68d325289d7287a626efbd32896fd31d81aabd5ea8040da9c1eeab3cc61d22",
+   "sealed_at": "2026-11-27 10:21:06",
+   "bytes": 4383
+  },
+  "data/evals/20261127-102007-assistant-live/cassettes/A3-ask-first.json": {
+   "sha256": "9a55b6bb1abbad3f3eada9b0f6c566b1bb1f94c7ef889b1e87328969c08c1ce7",
+   "sealed_at": "2026-11-27 10:21:06",
+   "bytes": 3919
+  },
+  "data/evals/20261127-102007-assistant-live/cassettes/A4-quiz.json": {
+   "sha256": "208c2b763ad36ce8c8ef936421d9b2815b58af0aaf26a52925ecab713472df94",
+   "sealed_at": "2026-11-27 10:21:06",
+   "bytes": 2193
+  },
+  "data/evals/20261127-102007-assistant-live/cassettes/A5-approve.json": {
+   "sha256": "f04c2308748c33c84322ec56e06432095fc035c491011af785ff6ce05a04eaca",
+   "sealed_at": "2026-11-27 10:21:06",
+   "bytes": 4834
+  },
+  "data/evals/20261127-102007-assistant-live/cassettes/A6-remind.json": {
+   "sha256": "8b7bbf25716dee2f981d719486690d173377bfd22624e67dbcf92828163cfc37",
+   "sealed_at": "2026-11-27 10:21:06",
+   "bytes": 3090
+  },
+  "data/evals/20261127-102007-assistant-live/cassettes/A7-deadline.json": {
+   "sha256": "9005b0ed03ad01e88e834089756972602908be441f14b18f28d6ce6fec1aa6c6",
+   "sealed_at": "2026-11-27 10:21:06",
+   "bytes": 3195
+  },
+  "data/evals/20261127-102007-assistant-live/cassettes/A8-automation.json": {
+   "sha256": "f0c42f52fdd2efb6fb71b177267d26292b81715b2b4d0a734f6fb2f2d6a57536",
+   "sealed_at": "2026-11-27 10:21:06",
+   "bytes": 3464
+  },
+  "data/evals/20261127-102007-assistant-live/cassettes/A9-no-rights.json": {
+   "sha256": "f49931474aee09f6ebeccfaec17a80bfad81e02313459385c45febccbd78d483",
+   "sealed_at": "2026-11-27 10:21:06",
+   "bytes": 3782
+  },
+  "data/evals/20261127-102106-assistant-live-crashed-scorer/cassettes/A1-overview.json": {
+   "sha256": "f350c43b442ac0f65f7bb7ecb8fd979911395addb6617be1bd10ab2b9d9ae8e5",
+   "sealed_at": "2026-11-27 10:23:38",
+   "bytes": 2922
+  },
+  "data/evals/20261127-102106-assistant-live-crashed-scorer/cassettes/A10-build.json": {
+   "sha256": "abb2f33895f55392ee2b112ee16990e46aa17fd47f2ba05118a58fa18470347d",
+   "sealed_at": "2026-11-27 10:23:38",
+   "bytes": 15141
+  },
+  "data/evals/20261127-102106-assistant-live-crashed-scorer/cassettes/A2-rsvp.json": {
+   "sha256": "eaa5a370fece249c9e001c8299ce773efd8369e55b0dd00fb2d0c7a6e515d3dc",
+   "sealed_at": "2026-11-27 10:23:38",
+   "bytes": 3140
+  },
+  "data/evals/20261127-102106-assistant-live-crashed-scorer/cassettes/A3-ask-first.json": {
+   "sha256": "4009514c7a53c3c49ab19279b93ac0f10f9e2a3fce778021e7b01a4b33a1f0f0",
+   "sealed_at": "2026-11-27 10:23:38",
+   "bytes": 3863
+  },
+  "data/evals/20261127-102106-assistant-live-crashed-scorer/cassettes/A4-quiz.json": {
+   "sha256": "5cefc9f82a5ba18ca41ed5c46302bf48d94cce6559a29ca148b57a557acf0c92",
+   "sealed_at": "2026-11-27 10:23:38",
+   "bytes": 2097
+  },
+  "data/evals/20261127-102106-assistant-live-crashed-scorer/cassettes/A5-approve.json": {
+   "sha256": "9ee5b7d77190448131bdc5001429da802862764058a583f0e02896788cad45c4",
+   "sealed_at": "2026-11-27 10:23:38",
+   "bytes": 3515
+  },
+  "data/evals/20261127-102106-assistant-live-crashed-scorer/cassettes/A6-remind.json": {
+   "sha256": "f710af02fe921ec22309bbad28bb3306a3d59b855451b7c51326fcd3e330341a",
+   "sealed_at": "2026-11-27 10:23:38",
+   "bytes": 2946
+  },
+  "data/evals/20261127-102106-assistant-live-crashed-scorer/cassettes/A7-deadline.json": {
+   "sha256": "ef00cd318d99cd2c75486f17ba4f2de39ef8b6bd00b5d0bd9a11610448cd6254",
+   "sealed_at": "2026-11-27 10:23:38",
+   "bytes": 3144
+  },
+  "data/evals/20261127-102106-assistant-live-crashed-scorer/cassettes/A8-automation.json": {
+   "sha256": "4da03af06bd339e1528c048fee8221d09d991327dacea02a328dd4d45ae332ff",
+   "sealed_at": "2026-11-27 10:23:38",
+   "bytes": 3498
+  },
+  "data/evals/20261127-102106-assistant-live-crashed-scorer/cassettes/A9-no-rights.json": {
+   "sha256": "a8f9ba880cb5a61717eefd1d781fce9a080ecd6e3c5c2d771f0ade8e8bb59383",
+   "sealed_at": "2026-11-27 10:23:38",
+   "bytes": 3932
+  },
+  "data/evals/20261127-102231-assistant-live/results.json": {
+   "sha256": "e7cc6cbcf79cf522bf11c7e09866b02f9657e4de29df9e5dde1f43b4d0fb2884",
+   "sealed_at": "2026-11-27 10:23:38",
+   "bytes": 19049
+  },
+  "data/evals/20261127-102231-assistant-live/cassettes/A1-overview.json": {
+   "sha256": "37de7c59c53e3cd70d47ab30cf3862aea96a41dd33788d91a5ca4b14d9a1715d",
+   "sealed_at": "2026-11-27 10:23:38",
+   "bytes": 3308
+  },
+  "data/evals/20261127-102231-assistant-live/cassettes/A10-build.json": {
+   "sha256": "c3776c7045aaea2641e72292412ed9d98216b92156080f541f9cf47fa4a80919",
+   "sealed_at": "2026-11-27 10:23:38",
+   "bytes": 15210
+  },
+  "data/evals/20261127-102231-assistant-live/cassettes/A11-share.json": {
+   "sha256": "02b3eceb6110e57b20f263070a1d7f5d30a70ac11f831ca4fa579480db6dd38f",
+   "sealed_at": "2026-11-27 10:23:38",
+   "bytes": 4578
+  },
+  "data/evals/20261127-102231-assistant-live/cassettes/A2-rsvp.json": {
+   "sha256": "16b096275302f8a91d0369078d8c224579225f2a164edc68fe2b3b6eb451229d",
+   "sealed_at": "2026-11-27 10:23:38",
+   "bytes": 3161
+  },
+  "data/evals/20261127-102231-assistant-live/cassettes/A3-ask-first.json": {
+   "sha256": "fe288d8f1345826b7564df10fd0f2021155f3eac2776406de0ba7e7d1ab0ca0c",
+   "sealed_at": "2026-11-27 10:23:38",
+   "bytes": 2807
+  },
+  "data/evals/20261127-102231-assistant-live/cassettes/A4-quiz.json": {
+   "sha256": "c724ba869f3e95ac35b40d8d5e71e6f5b0bcf0e7199e266d4e8980ac62756dd1",
+   "sealed_at": "2026-11-27 10:23:38",
+   "bytes": 2304
+  },
+  "data/evals/20261127-102231-assistant-live/cassettes/A5-approve.json": {
+   "sha256": "ecb66092ab1a358945ebec195ad3291fc800c6ee81d6c0c1872fabc2ff743824",
+   "sealed_at": "2026-11-27 10:23:38",
+   "bytes": 4757
+  },
+  "data/evals/20261127-102231-assistant-live/cassettes/A6-remind.json": {
+   "sha256": "ad0b604e1a65a2b53dad58dc2ef68c3a11ccba78f51c283199136774d1cce3e6",
+   "sealed_at": "2026-11-27 10:23:38",
+   "bytes": 2947
+  },
+  "data/evals/20261127-102231-assistant-live/cassettes/A7-deadline.json": {
+   "sha256": "92f5221fa1667173c6565a697e5367f06db52c9892a066d976672f61676100c3",
+   "sealed_at": "2026-11-27 10:23:38",
+   "bytes": 3177
+  },
+  "data/evals/20261127-102231-assistant-live/cassettes/A8-automation.json": {
+   "sha256": "22e054842248cd2c01da65d4b199766444ed40794a446d076061f72552356a1e",
+   "sealed_at": "2026-11-27 10:23:38",
+   "bytes": 3155
+  },
+  "data/evals/20261127-102231-assistant-live/cassettes/A9-no-rights.json": {
+   "sha256": "70ff5622fd978143cb295edb91fdbc2bb3b2bc5fda58bef42a9da41966270744",
+   "sealed_at": "2026-11-27 10:23:38",
+   "bytes": 3865
+  },
+  "data/evals/20261127-102336-assistant-replay/results.json": {
+   "sha256": "10434935b25a271f0ce0c8bd9fd584bd01f178390e10565c522f8f159926467e",
+   "sealed_at": "2026-11-27 10:23:38",
+   "bytes": 19090
   }
  },
- "git_at_last_seal": "04d7857"
+ "git_at_last_seal": "59612f0"
 }
