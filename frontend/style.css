@@ -2,14 +2,14 @@
    AppShare — phone-first app. Warm paper, ink, one vermilion accent.
    ===================================================================== */
 :root {
-  --bg: #f4f1ea;
-  --surface: #fffdf8;
-  --surface-2: #f8f5ee;
+  --bg: #efede8;
+  --surface: #ffffff;
+  --surface-2: #f6f5f1;
   --ink: #1c1a17;
-  --ink-2: #55514a;
-  --ink-3: #857f74;
-  --line: #e4dfd3;
-  --line-2: #d3ccbd;
+  --ink-2: #45413a;
+  --ink-3: #655f56;          /* 5.4:1 on the page — readable without effort */
+  --line: #d8d3c8;
+  --line-2: #c4bdb0;
   --brand: #c4471a;          /* white text on it: 4.6:1 */
   --brand-ink: #a93c15;
   --brand-soft: #f7e6dc;
@@ -18,8 +18,12 @@
   --bad: #b42318; --bad-soft: #fbe6e3;
   --data: #2a78d6;           /* the one data colour for charts (validated light slot 1) */
   --data-soft: #dbe8f8;
+  --ai: #5b45d6;             /* the Assistant, and only the Assistant (6.4:1 on white) */
+  --ai-ink: #4a36c2;
+  --ai-soft: #efecfe;
+  --ai-line: #d9d2fb;
   --r: 14px; --r-sm: 10px; --r-xs: 4px;
-  --shadow: 0 1px 0 rgba(28,26,23,.04), 0 2px 8px rgba(28,26,23,.04);
+  --shadow: 0 1px 2px rgba(28,26,23,.06), 0 4px 14px rgba(28,26,23,.06);
   --sheet-shadow: 0 -10px 40px rgba(28,26,23,.18);
   --mono: ui-monospace, "Cascadia Mono", "SF Mono", Consolas, monospace;
   --nav-h: 64px;
@@ -50,7 +54,7 @@ svg.ic.fill { fill: currentColor; stroke: none; }
 .shell { max-width: 760px; margin: 0 auto; padding: 0 16px calc(var(--nav-h) + 28px + var(--safe-b)); }
 .topbar {
   position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: .6rem;
-  padding: calc(10px + env(safe-area-inset-top)) 16px 10px; background: rgba(244,241,234,.92); backdrop-filter: blur(10px);
+  padding: calc(10px + env(safe-area-inset-top)) 16px 10px; background: rgba(239,237,232,.92); backdrop-filter: blur(10px);
   border-bottom: 1px solid transparent; transition: border-color .2s;
 }
 .topbar.scrolled { border-bottom-color: var(--line); }
@@ -275,7 +279,7 @@ svg.ic.fill { fill: currentColor; stroke: none; }
 .drop.has { border-style: solid; border-color: var(--ok); background: #fbfdfb; }
 .drop.has .di { background: var(--ok-soft); color: var(--ok); }
 
-.submit-bar { position: sticky; bottom: 0; z-index: 10; margin: 16px -16px 0; padding: 12px 16px calc(12px + var(--safe-b)); background: rgba(244,241,234,.94); backdrop-filter: blur(8px); border-top: 1px solid var(--line); display: flex; align-items: center; gap: 12px; }
+.submit-bar { position: sticky; bottom: 0; z-index: 10; margin: 16px -16px 0; padding: 12px 16px calc(12px + var(--safe-b)); background: rgba(239,237,232,.94); backdrop-filter: blur(8px); border-top: 1px solid var(--line); display: flex; align-items: center; gap: 12px; }
 .submit-bar .prog { flex: 1; min-width: 0; }
 .submit-bar .prog small { display: block; font-size: .78rem; color: var(--ink-3); margin-bottom: 4px; }
 .done-card { text-align: center; padding: 28px 18px; }
@@ -698,7 +702,7 @@ body.has-dock .shell { padding-bottom: calc(var(--nav-h) + 96px + var(--safe-b))
 /* the Assistant, full screen */
 body.asst-open { overflow: hidden; }
 .asst { position: fixed; inset: 0; z-index: 30; display: flex; flex-direction: column; background: var(--bg);
-  background-image: radial-gradient(120% 60% at 50% -10%, #fbe6d6 0%, rgba(244,241,234,0) 60%); animation: asst-in .28s cubic-bezier(.2,.8,.2,1); }
+  background-image: radial-gradient(120% 60% at 50% -10%, #fbe6d6 0%, rgba(239,237,232,0) 60%); animation: asst-in .28s cubic-bezier(.2,.8,.2,1); }
 @keyframes asst-in { from { opacity: 0; transform: translateY(24px); } }
 .asst-top { display: flex; align-items: center; gap: 8px; padding: calc(8px + env(safe-area-inset-top)) 10px 8px; }
 .asst-id { flex: 1; display: flex; align-items: center; gap: 10px; justify-content: center; }
@@ -756,7 +760,7 @@ body.asst-open { overflow: hidden; }
 .acard.bad { border-color: var(--bad); } .acard.off { border-color: var(--line-2); opacity: .7; }
 
 /* the composer */
-.asst-ask { padding: 8px 12px calc(10px + var(--safe-b)); background: linear-gradient(rgba(244,241,234,0), var(--bg) 30%); }
+.asst-ask { padding: 8px 12px calc(10px + var(--safe-b)); background: linear-gradient(rgba(239,237,232,0), var(--bg) 30%); }
 .asst-field { max-width: 680px; margin: 0 auto; display: flex; align-items: flex-end; gap: 8px; padding: 6px 6px 6px 16px; border-radius: 26px;
   background: var(--surface); border: 1px solid var(--line-2); box-shadow: 0 6px 24px rgba(28,26,23,.08); }
 .asst-field:focus-within { border-color: var(--ink-3); }
@@ -769,7 +773,7 @@ body.asst-open { overflow: hidden; }
 /* =====================================================================
    Sign in — who you're signing in to, one obvious field, one tap for accounts used on this device
    ===================================================================== */
-body.auth-body { background: var(--bg); background-image: radial-gradient(130% 55% at 50% -8%, #fbe3d1 0%, rgba(244,241,234,0) 62%); min-height: 100dvh; }
+body.auth-body { background: var(--bg); background-image: radial-gradient(130% 55% at 50% -8%, #fbe3d1 0%, rgba(239,237,232,0) 62%); min-height: 100dvh; }
 .auth { max-width: 440px; margin: 0 auto; padding: calc(22px + env(safe-area-inset-top)) 20px calc(28px + var(--safe-b)); display: flex; flex-direction: column; min-height: 100dvh; }
 .auth-brand { display: flex; align-items: center; gap: 10px; font-size: 1.1rem; letter-spacing: -.01em; }
 .auth-brand .mark { width: 36px; height: 36px; border-radius: 10px; box-shadow: 0 6px 16px rgba(196,71,26,.3); }
@@ -823,3 +827,86 @@ body.asst-open .install-bar, body.asst-open .open-hint { display: none; }
 
 .asst-starters button { text-align: left; justify-items: start; color: var(--ink); }
 .orb.live { isolation: isolate; }
+
+/* =====================================================================
+   COLOUR ROLES — every colour has one job, so meaning reads without effort
+     orange (brand)   you can press it: primary buttons, Create, the active tab, the logo
+     violet (ai)      the Assistant: orb, briefing, Ask bar, "ready for you to check", its suggestions
+     red (bad)        time is running out, or something needs attention (badges, "due today")
+     green (ok)       done: sent, approved, answered
+     greys            information; white cards on a soft page, with a visible edge
+   Contrast checked: secondary text 5.4:1 on the page, violet 6.4:1 and red 6.6:1 on cards.
+   ===================================================================== */
+
+/* identity is neutral (people aren't actions) */
+.avatar, .acct .pi, .auth-acct .pi { background: #e7e3db; color: var(--ink-2); }
+.tpl .ti, .send-opt svg.ic { background: var(--surface-2); color: var(--ink-2); }
+.send-opt svg.ic { background: none; }
+
+/* attention badges and unread markers: red, like every phone OS */
+.dot-n, .tabbar .badge-n { background: var(--bad); }
+.lrow.unread .t::before { background: var(--bad); }
+
+/* counts that need you: ink number, a small red marker — not the action colour */
+.glance .hot b { color: var(--ink); }
+.glance .hot span::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--bad); margin-right: 6px; vertical-align: 1px; }
+
+/* generic notices are information, not brand */
+.notice { background: var(--surface-2); color: var(--ink-2); border: 1px solid var(--line); }
+.notice.ok, .notice.warn, .notice.bad { border-color: transparent; }
+
+/* everything the agents did, in the owner's build story, is violet */
+.story-step .sd.ag { background: var(--ai-soft); color: var(--ai-ink); }
+.story-why { border-left-color: var(--ai); }
+.story-why span { color: var(--ai-ink); }
+.st-dot.work { background: var(--ai); }
+
+/* cards are objects: white, a visible edge, a real shadow */
+.card, .lrow { border-color: var(--line); }
+.card { box-shadow: var(--shadow); }
+
+/* ---------------------------------------------------------------- the Assistant is violet, everywhere */
+.orb { background: conic-gradient(from 210deg, #4f46e5, #7c3aed, #a855f7, #6366f1, #3b82f6, #4f46e5);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.28), 0 2px 10px rgba(79,70,229,.32); }
+.brief { background: linear-gradient(160deg, #ffffff 0%, #f6f4ff 100%); border: 1px solid var(--ai-line); box-shadow: var(--shadow); }
+.brief-acts button { border-color: var(--ai-line); background: #fff; }
+.brief-acts button svg.ic { color: var(--ai); }
+.brief-t b { color: var(--ink); }
+.ask-dock { border-color: var(--ai-line); box-shadow: 0 8px 28px rgba(79,70,229,.14), 0 1px 0 rgba(28,26,23,.04); background: rgba(255,255,255,.97); }
+.ask-dock .ad-k { background: var(--ai); }
+.asst { background-image: radial-gradient(120% 55% at 50% -10%, #e8e4ff 0%, rgba(239,237,232,0) 60%); }
+.asst-starters .st-ic { background: var(--ai-soft); color: var(--ai); }
+.asst-starters button { border-color: var(--line); }
+.dots i { background: var(--ai); }
+.asst-send { background: var(--ai); }
+.asst-field:focus-within { border-color: var(--ai); box-shadow: 0 0 0 3px var(--ai-soft), 0 6px 24px rgba(28,26,23,.08); }
+.msg.ai .bub { border-color: var(--line); }
+/* a card the Assistant prepared: violet frame and label = "the AI made this";
+   its Confirm button stays orange = "this is your action" */
+.acard { border-color: var(--ai-line); border-width: 1.5px; box-shadow: 0 8px 24px rgba(79,70,229,.10); }
+.ach-ic { background: var(--ai-soft); color: var(--ai); }
+.ach-k { color: var(--ai-ink); }
+.acard.ok { border-color: var(--ok); box-shadow: none; }
+
+/* sign in: neutral information, one orange action */
+.auth-org svg.ic, .auth-points svg.ic { color: var(--ink-2); }
+body.auth-body { background-image: radial-gradient(130% 50% at 50% -8%, #fbe9dc 0%, rgba(239,237,232,0) 60%); }
+.auth-card { border-color: var(--line); }
+
+/* every way of talking to an AI is violet (the Assistant, the build team, Insights) */
+.btn.ai { background: var(--ai); border-color: var(--ai); color: #fff; }
+.btn.ai:hover { background: var(--ai-ink); border-color: var(--ai-ink); }
+.btn.ai:disabled { opacity: .55; }
+.btn.ai-ghost { color: var(--ai-ink); border-color: var(--ai-line); background: #fff; }
+.btn.ai-ghost svg.ic, .btn.ai svg.ic { color: inherit; }
+.chip.ai { border-color: var(--ai-line); background: var(--ai-soft); color: var(--ai-ink); font-weight: 600; }
+.ti.ai, .lrow .ti.ai { background: var(--ai-soft); color: var(--ai); }
+.utabs button[data-tab="ask"] { color: var(--ai-ink); display: inline-flex; align-items: center; gap: 5px; }
+.utabs button[data-tab="ask"] svg.ic { width: 16px; height: 16px; }
+.utabs button[data-tab="ask"].on { color: var(--ai-ink); }
+.utabs button[data-tab="ask"].on::after { background: var(--ai); }
+.bubble.agent { border-color: var(--ai-line); }
+
+/* the Assistant's conversation scrolls inside the screen (a flex child needs min-height: 0 to scroll) */
+.asst-body { min-height: 0; -webkit-overflow-scrolling: touch; }
+.asst-top, .asst-ask { flex: none; }
