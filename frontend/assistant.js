@@ -15,7 +15,7 @@ const Assistant = (() => {
   const STARTERS = [
     { icon: "inbox", t: "Catch me up", s: "What's due, what's waiting", q: "What do I need to do?" },
     { icon: "send", t: "Answer an app for me", s: "You check every answer first", fill: "Answer " },
-    { icon: "chart", t: "How are my apps doing?", s: "Responses, who's missing", q: "How are my apps doing?" },
+    { icon: "sparkle", t: "Build an app", s: "Describe it — the team builds it", fill: "Build an app for " },
     { icon: "clock", t: "Automate a reminder", s: "Runs on a schedule, no AI", fill: "Every Monday at 9am, remind people who haven't answered " },
   ];
 
@@ -36,7 +36,7 @@ const Assistant = (() => {
         <div class="asst-hello" id="asstHello">
           ${orb(64, true)}
           <h1>${first ? `Hi ${esc(first)}, how can I help?` : "How can I help?"}</h1>
-          <p>I can catch you up, answer apps for you, run your apps and set up reminders. I prepare everything — you check it and press Confirm.</p>
+          <p>I can build and share apps, answer them for you, run your apps and set up reminders. I prepare everything — you check it and press Confirm.</p>
           <div class="asst-starters">${STARTERS.map((x, i) => `<button data-st="${i}"><span class="st-ic">${ic(x.icon)}</span><b>${esc(x.t)}</b><span>${esc(x.s)}</span></button>`).join("")}</div>
         </div>
         <div class="asst-convo" id="asstConvo"></div>
@@ -97,7 +97,7 @@ const Assistant = (() => {
     busy = false; input.focus();
   }
 
-  const CARD_ICON = { submit: "send", status: "check", remind: "bell", deadline: "calendar", app_status: "lock", edit: "pencil", automation: "clock", automation_off: "clock" };
+  const CARD_ICON = { build: "sparkle", share: "users", submit: "send", status: "check", remind: "bell", deadline: "calendar", app_status: "lock", edit: "pencil", automation: "clock", automation_off: "clock" };
   function card(c) {
     const el = add(`<div class="acard"><div class="acard-h"><span class="ach-ic">${ic(CARD_ICON[c.kind] || "sparkle")}</span>
         <div><span class="ach-k">Ready for you to check</span><b>${esc(c.title)}</b></div></div>
@@ -111,7 +111,8 @@ const Assistant = (() => {
       try {
         const r = await api("/api/assistant/confirm", { json: { id: c.id, accept: true } });
         el.classList.add("ok");
-        settle(`${ic("check")}<span>${esc(r.done || "Done.")}</span>${c.slug ? `<a class="btn sm" href="/a/${esc(c.slug)}">Open</a>` : ""}`);
+        const open = r.open || (r.slug || c.slug ? "/a/" + (r.slug || c.slug) : null);
+        settle(`${ic("check")}<span>${esc(r.done || "Done.")}</span>${open ? `<a class="btn sm" href="${esc(open)}">Open</a>` : ""}`);
         window.dispatchEvent(new Event("appshare:changed"));
       } catch (err) { el.classList.add("bad"); settle(`${ic("x")}<span>${esc(err.message)}</span>`); }
     };

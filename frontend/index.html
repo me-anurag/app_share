@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#f4f1ea">
+  <meta name="theme-color" content="#efede8">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="AppShare">
@@ -92,7 +92,7 @@
             <div><div class="t">${esc(a.title)}</div><div class="m">${esc(meta)}</div></div>
             <span class="end">${a.waiting ? `<span class="sw brand">${a.waiting} waiting</span>` : appWord(a)}</span>
             ${pct !== null && a.status !== "draft" ? `<div class="pl"><i style="width:${pct}%"></i></div>` : ""}</a>`; }).join("")}</div></div>`);
-      const firstApp = `<div class="sec"><div class="card list"><button class="lrow" id="newBtn"><span class="ti">${ic("sparkle")}</span>
+      const firstApp = `<div class="sec"><div class="card list"><button class="lrow" id="newBtn"><span class="ti ai">${ic("sparkle")}</span>
           <div><div class="t">Make your own app</div><div class="m">A poll, a sign-up, feedback — describe it or pick a template</div></div><span class="end">${ic("chev")}</span></button></div></div>`;
 
       if (d.tracked.length) P.push(`<div class="sec" id="secReq"><div class="sec-t"><h2>Your requests</h2><span class="n">${d.tracked.length}</span></div>
@@ -157,7 +157,7 @@
           <textarea id="ask" rows="3" placeholder="${esc(PLACEHOLDER[me.mode])}"></textarea>
           <div class="bar">${me.agents ? `<span class="muted tiny grow">${ic("sparkle")} Builder · Data · Design · Access</span>`
             : `<span class="muted tiny grow">Agents need an API key on the server. Templates work now.</span>`}
-            <button class="btn primary sm" id="askGo">${ic("send")}Build it</button></div>
+            <button class="btn ai sm" id="askGo">${ic("sparkle")}Build it</button></div>
         </div></div>
         <div class="sec convo" id="convo"></div>
         <div id="prog" class="sec"></div>
@@ -179,7 +179,7 @@
         ${t.rules.length ? `<p class="muted small" style="margin-top:10px">${t.rules.map(esc).join(" · ")}</p>` : ""}
         <div class="stack" style="margin-top:18px">
           <button class="btn primary block" id="tUse">Use this template</button>
-          <button class="btn block" id="tCustom">${ic("sparkle")}Change it with the agents first</button></div>`);
+          <button class="btn block ai-ghost" id="tCustom">${ic("sparkle")}Change it with the agents first</button></div>`);
       s.el.querySelector("#tUse").onclick = async () => {
         s.el.querySelector("#tUse").disabled = true;
         const app = await api(`/api/templates/${t.id}/use`, { json: {} });

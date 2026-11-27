@@ -56,6 +56,12 @@ see in AppShare. You keep them on top of things and you do routine work for them
 What you can do:
 - Look things up (my_overview, open_app, list_requests, ask_about_my_app, list_automations). Never guess titles,
   deadlines, options, statuses, names or numbers.
+- Build a new app or site from what the person describes (prepare_build): the whole build team makes it as a private
+  draft. Put everything they said into the description (questions, options, places, deadline, who it's for).
+  Don't quiz them first: the Builder chooses sensible defaults (no deadline unless given; a group name like "34ML" is
+  who it's for) and asks only what's essential, and they see the draft before anyone else. Ask first ONLY if you can't
+  tell what the app is for.
+- Share an app (prepare_share): look the people or groups up with search_directory first, then prepare it.
 - For the person: answer an app or change their answers (prepare_answers).
 - For apps they own or edit: move requests along (prepare_status_change), remind people who haven't answered
   (prepare_reminder), change the deadline (prepare_deadline), close or reopen (prepare_app_status), any other change
@@ -66,8 +72,9 @@ The rule that never bends: every prepare_* tool only PREPARES a card that shows 
 happens until the person presses Confirm on it. After preparing, tell them in one short sentence to check the card.
 Never say something was sent, changed, approved, reminded or set up until a later message tells you they confirmed.
 
-Before preparing, make sure the details are clear and complete: which app, which people or requests, which answers,
-which date. If anything is missing or ambiguous, ASK — never invent an answer, pick an option they didn't choose,
+Never send the person to another screen for something you can do: you can build, share, answer, approve, remind,
+change and automate. Before preparing, make sure the details are clear and complete: which app, which people or
+requests, which answers, which date. If anything is missing or ambiguous, ASK — never invent an answer, pick an option they didn't choose,
 or include people they didn't mean. When they refer to requests ("approve the pending ones"), call list_requests
 first and use exactly those refs. You can't answer quizzes, join live games or attach files — say so.
 
@@ -92,8 +99,28 @@ TOOLS = [
      "description": "Ask the Insights agent about the responses to an app the person owns or can view (counts, who hasn't "
                     "answered, summaries).",
      "input_schema": {"type": "object", "properties": {"app": _APP, "question": {"type": "string"}}, "required": ["app", "question"]}},
+    {"name": "search_directory",
+     "description": "Find real groups and people by part of their name (for sharing). People come back with a ref (u12), never an email.",
+     "input_schema": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}},
     {"name": "list_automations", "description": "The person's automations (on or off) and what they last did.",
      "input_schema": {"type": "object", "properties": {}}},
+    {"name": "prepare_build",
+     "description": "Card: build a new app or site from this description. After the person confirms, the Builder and its team make "
+                    "it as a private draft (nobody sees it until it's shared). Costs about $0.04.",
+     "input_schema": {"type": "object", "properties": {
+         "description": {"type": "string", "description": "everything the person asked for, in their words: purpose, questions, options, places, deadline, audience"},
+         "reason": REASON("What the person asked for.")}, "required": ["description", "reason"]}},
+    {"name": "prepare_share",
+     "description": "Card: share an app the person owns or edits — add groups or people with a role (submitter fills it in, viewer "
+                    "sees responses, editor manages it), and/or open it to everyone in the organisation or anyone with the link. "
+                    "Adds to the current shares; publishes a draft.",
+     "input_schema": {"type": "object", "properties": {
+         "app": _APP,
+         "add": {"type": "array", "items": {"type": "object", "properties": {
+             "type": {"type": "string", "enum": ["group", "user"]}, "name": {"type": "string", "description": "group name, or a person's ref (u12) or name"},
+             "role": {"type": "string", "enum": ["submitter", "viewer", "editor"]}}, "required": ["type", "name"]}},
+         "link": {"type": "string", "enum": ["keep", "restricted", "org", "public"], "description": "who can open it by link; default keep"},
+         "reason": REASON("Who the person said it is for.")}, "required": ["app", "reason"]}},
     {"name": "prepare_answers",
      "description": "Card: answers to an app FOR THE PERSON. Checked exactly like the form. Nothing is sent until they confirm.",
      "input_schema": {"type": "object", "properties": {
@@ -329,6 +356,13 @@ def handlers(conn, user, session):
         except agents.AgentError as e:
             return {"error": str(e)}
 
+    def search_directory(query=""):
+        q = f"%{str(query).strip()}%"
+        groups = conn.execute("SELECT g.name, g.kind, COUNT(gm.user_id) AS members FROM groups g LEFT JOIN group_members gm ON gm.group_id = g.id "
+                              "WHERE g.name LIKE ? OR g.description LIKE ? GROUP BY g.id ORDER BY g.name LIMIT 12", (q, q)).fetchall()
+        people = conn.execute("SELECT id, name, title FROM users WHERE name LIKE ? OR email LIKE ? ORDER BY name LIMIT 12", (q, q)).fetchall()
+        return {"groups": [dict(g) for g in groups], "people": [{"name": p["name"], "title": p["title"], "ref": f"u{p['id']}"} for p in people]}
+
     def list_automations():
         rows = conn.execute("SELECT au.*, a.title FROM automations au LEFT JOIN apps a ON a.id = au.app_id WHERE au.user_id = ? ORDER BY au.id",
                             (user["id"],)).fetchall()
@@ -336,6 +370,45 @@ def handlers(conn, user, session):
                                  "on": bool(r["enabled"]), "runs": r["runs"], "last_run": r["last_run"], "last_result": r["last_result"]} for r in rows]}
 
     # ------------------------------------------------------------------ preparing (cards)
+    def prepare_build(description, reason=""):
+        description = str(description or "").strip()
+        if len(description) < 8:
+            return {"error": "Ask the person what the app is for first."}
+        rows = [{"label": "What you asked for", "value": _clip(description, 900)},
+                {"label": "Who builds it", "value": "Builder, with the Data, Design and Access agents"}]
+        return card("build", None, "Build this app?", rows, {"description": _clip(description, 2000)}, reason,
+                    "It's saved as a private draft: nobody sees it until you share it.", "Confirm · build it", cost="about $0.04")
+
+    def prepare_share(app, add=None, link="keep", reason=""):
+        a, err = find(app)
+        if err:
+            return err
+        e = need(a, "editor")
+        if e:
+            return e
+        roles = {"submitter": "fills it in", "viewer": "sees responses", "editor": "can manage it"}
+        resolved, unknown = [], []
+        for x in add or []:
+            p = M.access.resolve_principal(conn, x.get("type"), x.get("name"))
+            if not p:
+                unknown.append(x.get("name"))
+                continue
+            role = x.get("role") if x.get("role") in roles else "submitter"
+            resolved.append({"type": x["type"], "id": p["id"], "name": p["name"], "role": role})
+        if unknown:
+            return {"error": "These aren't in the directory — call search_directory and use the exact names or refs.", "not_found": unknown}
+        link = link if link in ("restricted", "org", "public") else a["link_access"]
+        if not resolved and link == a["link_access"] and a["status"] != "draft":
+            return {"error": "Nothing would change. Ask who it should be shared with."}
+        rows = [{"label": r["name"], "value": roles[r["role"]]} for r in resolved]
+        if link != a["link_access"]:
+            rows.append({"label": "Open by link", "value": {"restricted": "only the people above", "org": f"everyone at {M.ORG_NAME}",
+                                                            "public": "anyone with the link (no account needed)"}[link]})
+        if a["status"] == "draft":
+            rows.append({"label": "Status", "value": "Draft → published (it starts accepting responses)"})
+        return card("share", a, f"Share “{a['title']}”?", rows, {"add": resolved, "link": link}, reason,
+                    "New people get a notification and see it on their Home.", "Confirm · share")
+
     def prepare_answers(app, answers, reason=""):
         a, err = find(app)
         if err:
@@ -479,7 +552,8 @@ def handlers(conn, user, session):
         return card("automation_off", None, "Switch off this automation?", rows, {"id": r["id"]}, reason, None, "Confirm · switch off")
 
     return {"my_overview": my_overview, "open_app": open_app, "list_requests": list_requests, "ask_about_my_app": ask_about_my_app,
-            "list_automations": list_automations, "prepare_answers": prepare_answers, "prepare_status_change": prepare_status_change,
+            "list_automations": list_automations, "search_directory": search_directory, "prepare_build": prepare_build,
+            "prepare_share": prepare_share, "prepare_answers": prepare_answers, "prepare_status_change": prepare_status_change,
             "prepare_reminder": prepare_reminder, "prepare_deadline": prepare_deadline, "prepare_app_status": prepare_app_status,
             "prepare_edit": prepare_edit, "prepare_automation": prepare_automation, "prepare_automation_off": prepare_automation_off}
 
@@ -569,6 +643,29 @@ def confirm(conn, user, card_id, accept):
             raise ValueError(f"The Builder couldn't make the change: {e}")
         done = f"The Builder worked on “{a['title']}”: {_clip(reply, 300)}"
         result = {"builder_reply": reply, "changed": s.get("saved", False)}
+    elif k == "build":
+        s = agents.load_session(conn, None, user["id"], "builder", None)
+        try:
+            reply = agents.run_builder(conn, user, s, pl["description"])
+        except agents.AgentError as e:
+            raise ValueError(f"The Builder couldn't build it: {e}")
+        if s.get("app_id"):
+            b = M.load_app(conn, s["app_id"])
+            done = f"Built “{b['title']}” as a private draft. Check the preview, then ask me to share it (or press Share)."
+            result = {"app_id": b["id"], "slug": b["slug"], "open": f"/manage/{b['id']}", "builder_reply": reply}
+            c["app"], c["slug"] = b["title"], b["slug"]
+        else:
+            done = f"The Builder needs more detail before it can build: {_clip(reply, 400)}"
+            result = {"builder_reply": reply}
+    elif k == "share":
+        current = M.access.list_shares(conn, a["id"])
+        merged = {(s["type"], s["id"]): s["role"] for s in current}
+        for r in pl["add"]:
+            merged[(r["type"], r["id"])] = r["role"]
+        entries = [M.ShareEntry(type=t, id=i, role=role) for (t, i), role in merged.items()]
+        out = M.share_app(a["id"], M.ShareIn(entries=entries, link_access=pl["link"], publish=True), user=user)
+        done = f"Shared “{a['title']}”: {out['audience']} {'person' if out['audience'] == 1 else 'people'} can open it now."
+        result = {"audience": out["audience"], "open": out["link"]}
     elif k == "automation":
         n = conn.execute("INSERT INTO automations (user_id, app_id, kind, params) VALUES (?, ?, ?, ?)",
                          (user["id"], a["id"] if a else None, pl["kind"], json.dumps(pl["params"]))).lastrowid

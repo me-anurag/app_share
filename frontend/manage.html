@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#f4f1ea">
+  <meta name="theme-color" content="#efede8">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="AppShare">
@@ -49,7 +49,7 @@
     async function load() {
       A = await api(`/api/apps/${appId}`);
       document.title = `${A.title} · AppShare`;
-      const tabs = [["overview", "Overview"], ["responses", "Responses", A.responses], ["ask", "Ask AI"], ...(A.can_edit ? [["customize", "Customize"]] : [])];
+      const tabs = [["overview", "Overview"], ["responses", "Responses", A.responses], ["ask", `${ic("sparkle")}Ask AI`], ...(A.can_edit ? [["customize", "Customize"]] : [])];
       if (!tabs.some(t => t[0] === tab)) tab = "overview";
       root.innerHTML = header() + `<nav class="utabs" role="tablist">${tabs.map(([k, l, c]) => `<button role="tab" data-tab="${k}" class="${k === tab ? "on" : ""}">${l}${c != null ? `<span class="c">${c}</span>` : ""}</button>`).join("")}</nav><div id="pane"></div>`;
       bindHeader();
@@ -187,7 +187,7 @@
         ${qHtml ? `<div class="sec"><div class="sec-t"><h2>${R.anonymous ? "Answers" : "Questions"}</h2>${R.anonymous ? `<span class="n">· anonymous</span>` : ""}</div><div class="card">${qHtml}</div></div>` : ""}
         ${!S.total ? `<div class="sec card empty-state"><div class="ei">${ic("chart")}</div><b>Results appear here as people respond</b><p>People are listed one per row; questions are summarised with counts and charts.</p></div>` : ""}
         ${A.can_edit ? `<div class="sec"><div class="card list"><button class="lrow" id="storyBtn">
-          <span class="ti soft">${ic("sparkle")}</span><div><div class="t">How this app was built</div><div class="m">What each AI agent decided, and why</div></div>
+          <span class="ti ai">${ic("sparkle")}</span><div><div class="t">How this app was built</div><div class="m">What each AI agent decided, and why</div></div>
           <span class="end">${ic("chev")}</span></button></div></div>` : ""}`;
       const sb = $("storyBtn"); if (sb) sb.onclick = buildStory;
       document.querySelectorAll("[data-sf]").forEach(b => b.onclick = () => go("responses", b.dataset.sf));
@@ -339,12 +339,12 @@
     function ask() {
       const sugg = A.spec.statuses?.length ? ["How many are still pending?", "Summarize this week's requests"] :
         A.spec.anonymous ? ["Summarize the comments", "What's the average rating?"] : ["Who hasn't responded yet?", "Summarize the answers"];
-      $("pane").innerHTML = `<div class="sec row" style="gap:12px"><span class="face">${face("insights")}</span>
+      $("pane").innerHTML = `<div class="sec row" style="gap:12px">${orb(40)}
           <div class="grow"><b>Ask about the responses</b><div class="muted small">The Insights agent reads the real answers, so it doesn't guess.</div></div></div>
-        <div class="sec chips" id="sug">${sugg.map(s => `<button class="chip">${esc(s)}</button>`).join("")}</div>
+        <div class="sec chips" id="sug">${sugg.map(s => `<button class="chip ai">${esc(s)}</button>`).join("")}</div>
         <div class="sec convo" id="iConvo"></div>
         <div class="card ask-box sec"><textarea id="iAsk" rows="2" placeholder="e.g. Which option is most popular?"></textarea>
-          <div class="bar"><span class="grow"></span><button class="btn primary sm" id="iGo">${ic("send")}Ask</button></div></div>`;
+          <div class="bar"><span class="grow"></span><button class="btn ai sm" id="iGo">${ic("send")}Ask</button></div></div>`;
       const go = async text => {
         if (!text) return;
         $("iConvo").insertAdjacentHTML("beforeend", `<div class="bubble me">${esc(text)}</div><div class="bubble agent" id="iWait">Thinking…</div>`);

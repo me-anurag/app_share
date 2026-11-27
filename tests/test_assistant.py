@@ -70,7 +70,7 @@ card = session["cards"][-1]
 expect(r["prepared"] and subs(rsvp) == 0, "valid answers become a card — still nothing sent")
 expect({x["label"]: x["value"] for x in card["rows"]} == {"Your name": "Kabir Verma", "Which session?": "Morning"},
        "the card shows every answer, including the one from his account")
-expect(all(t["name"].startswith(("prepare_", "list_", "my_", "open_", "ask_")) for t in assistant.TOOLS)
+expect(all(t["name"].startswith(("prepare_", "list_", "my_", "open_", "ask_", "search_")) for t in assistant.TOOLS)
        and not [t for t in assistant.TOOLS if any(w in t["name"] for w in ("confirm", "send", "approve", "execute"))],
        "every action tool only PREPARES; the AI has no tool that confirms, sends or approves")
 
@@ -223,6 +223,45 @@ ran = assistant.run_due(datetime(2098, 6, 6, 10, 0))
 expect(any("reached" in x[1] for x in ran) and not assistant.run_due(datetime(2098, 6, 7, 10, 0)), "notify_at tells the owner once when the count is reached")
 expect("error" in assistant.handlers(connect(), kabir, {"id": 0, "messages": []})["prepare_automation"]("remind_missing", app="workshop feedback", reason="t"),
        "a student can't set up reminders on someone else's app")
+
+print("\n== Build and share, through cards ==")
+apps_before = connect().execute("SELECT COUNT(*) FROM apps").fetchone()[0]
+r = HM["prepare_build"]("A sign-up for the robotics workshop for 34ML: morning or afternoon session, 20 places.", reason="t")
+c = sM["cards"][-1]
+expect(r["prepared"] and c["cost"] and connect().execute("SELECT COUNT(*) FROM apps").fetchone()[0] == apps_before,
+       "a build is a card first (with its cost); nothing is built yet")
+calls_before = len(fake.calls)
+fake.scripts["builder"] = [[tool("save_app", spec={"title": "Robotics workshop sign-up", "description": "Pick a session.", "kind": "registration",
+                                                    "max_responses": 20, "fields": [{"id": "session", "type": "radio", "label": "Which session?",
+                                                                                     "options": ["Morning", "Afternoon"], "required": True}]},
+                                   share_suggestions=[{"type": "group", "name": "34ML", "role": "submitter"}], reason="As described.")],
+                           text("Built the robotics workshop sign-up.")]
+br = mt.post("/api/assistant/confirm", json={"id": c["id"], "accept": True}).json()
+newapp = connect().execute("SELECT * FROM apps WHERE title = 'Robotics workshop sign-up'").fetchone()
+expect(br["ok"] and newapp and newapp["status"] == "draft" and newapp["owner_id"] == mehta["id"] and "builder" in fake.calls[calls_before:],
+       "after Confirm the Builder builds it — a private draft owned by the person")
+expect(br["open"] == f"/manage/{newapp['id']}", "the card links to the new app")
+
+sM2 = {"id": 0, "messages": []}
+HM2 = assistant.handlers(connect(), mehta, sM2)
+expect("error" in HM2["prepare_share"]("robotics workshop", add=[{"type": "group", "name": "Quantum Club", "role": "submitter"}], reason="t"),
+       "a group that doesn't exist is refused (look it up first)")
+d_res = HM2["search_directory"]("34M")
+expect(any(g["name"] == "34ML" for g in d_res["groups"]) and all("email" not in str(p) for p in d_res["people"]), "the directory finds groups; people come back without emails")
+HM2["prepare_share"]("robotics workshop", add=[{"type": "group", "name": "34ML", "role": "submitter"}], reason="t")
+c = sM2["cards"][-1]
+expect(connect().execute("SELECT COUNT(*) FROM permissions WHERE app_id = ?", (newapp["id"],)).fetchone()[0] == 0 and
+       any(x["label"] == "Status" for x in c["rows"]), "share card: who, with which role, and that the draft will be published — nothing shared yet")
+sr = mt.post("/api/assistant/confirm", json={"id": c["id"], "accept": True}).json()
+row = connect().execute("SELECT status FROM apps WHERE id = ?", (newapp["id"],)).fetchone()
+expect(sr["ok"] and sr["audience"] > 0 and row["status"] == "published", f"after Confirm it's shared with 34ML and published ({sr['audience']} people)")
+HM2["prepare_share"]("robotics workshop", add=[{"type": "user", "name": "Ms. Kapoor", "role": "editor"}], reason="t")
+mt.post("/api/assistant/confirm", json={"id": sM2["cards"][-1]["id"], "accept": True}).raise_for_status()
+roles = {r[0]: r[1] for r in connect().execute("SELECT g.name, p.role FROM permissions p JOIN groups g ON g.id = p.principal_id WHERE p.app_id = ? AND p.principal_type = 'group'", (newapp["id"],))}
+expect(roles.get("34ML") == "submitter" and connect().execute("SELECT COUNT(*) FROM permissions WHERE app_id = ?", (newapp["id"],)).fetchone()[0] == 2,
+       "sharing again ADDS (Ms. Kapoor as editor) and keeps 34ML — nothing is replaced")
+expect("error" in assistant.handlers(connect(), kabir, {"id": 0, "messages": []})["prepare_share"]("lab swap", add=[{"type": "group", "name": "34ML"}], reason="t"),
+       "a student can't share someone else's app")
 
 print(f"\n{'ALL PASSED' if not failed else str(failed) + ' FAILED'}")
 sys.exit(failed)
